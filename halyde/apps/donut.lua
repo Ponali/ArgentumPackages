@@ -2,21 +2,53 @@ local event = import("event")
 local component = import("component")
 local computer = import("computer")
 local gpu = component.proxy(component.list("gpu")())
+-- local ocelot = component.proxy(component.list("ocelot")())
 local screen_width,screen_height = gpu.getResolution()
+
+local gpuDepth = gpu.getDepth()
+if gpuDepth==4 then
+  for i=1,15 do
+    gpu.setPaletteColor(i,math.min(math.max(math.floor((i-1)/15*255),0),255)*0x10101)
+  end
+end
+
+function color(fg,bg)
+  if gpuDepth==1 then
+    if fg then gpu.setForeground(math.floor(fg/255+0.5)*0xFFFFFF) end
+    if bg then gpu.setBackground(math.floor(bg/255+0.5)*0xFFFFFF) end
+  elseif gpuDepth==4 then
+    if fg then gpu.setForeground(math.floor(fg/255*14+1),true) end
+    if bg then gpu.setBackground(math.floor(bg/255*14+1),true) end
+  else
+    if fg then gpu.setForeground(math.floor(fg)*0x10101) end
+    if bg then gpu.setBackground(math.floor(bg)*0x10101) end
+  end
+end
 
 local currentQuality = 1
 
+color(nil,0)
 gpu.fill(1,1,screen_width,screen_height-1," ")
-gpu.setForeground(0x000000)
-gpu.setBackground(0xFFFFFF)
+color(0,255)
 gpu.fill(1,screen_height,screen_width,1," ")
 gpu.set(1,screen_height,"Spinning donut demo")
-gpu.setForeground(0x484848)
-gpu.set(22,screen_height,"[Q] Quit | Mode: [T] Text [P] Pixels | Quality: [H] High [M] Medium [L] Low")
-local qualities = {{"H",71},{"M",80},{"L",91}}
+color(72,nil)
 
-gpu.setForeground(0xFFFFFF)
-gpu.setBackground(0x000000)
+local qualities = nil
+
+if screen_width<68 then
+  color(0,nil)
+  gpu.set(screen_width-24,screen_height,"[Q] Quit | Quality: H M L")
+  qualities = {{"H",screen_width-4},{"M",screen_width-2},{"L",screen_width}}
+elseif screen_width<96 then
+  gpu.set(22,screen_height,"[Q] Quit | Quality: [H] High [M] Medium [L] Low")
+  qualities = {{"H",43},{"M",52},{"L",63}}
+else
+  gpu.set(22,screen_height,"[Q] Quit | Mode: [T] Text [P] Pixels | Quality: [H] High [M] Medium [L] Low")
+  qualities = {{"H",71},{"M",80},{"L",91}}
+end
+
+color(255,0)
 gpu.set(qualities[currentQuality][2],screen_height,"H")
 
 local render_buffer = gpu.allocateBuffer()
@@ -25,11 +57,9 @@ gpu.setActiveBuffer(render_buffer)
 function changeQuality(q)
   gpu.setActiveBuffer(0)
   gpu.fill(1,1,screen_width,screen_height-1," ")
-  gpu.setForeground(0x484848)
-  gpu.setBackground(0xFFFFFF)
+  color(72,255)
   gpu.set(qualities[currentQuality][2],screen_height,qualities[currentQuality][1])
-  gpu.setForeground(0xFFFFFF)
-  gpu.setBackground(0x000000)
+  color(255,0)
   gpu.set(qualities[q][2],screen_height,qualities[q][1])
   gpu.setActiveBuffer(render_buffer)
 
@@ -63,7 +93,7 @@ function listenForEvents()
     -- print("CHR "..chr)
     if chr=="q" then running=false end
     if chr=="t" then mode=0 end
-    if chr=="p" then mode=1 end
+    if chr=="p" and gpuDepth>1 then mode=1 end
     if chr=="h" then changeQuality(1) end
     if chr=="m" then changeQuality(2) end
     if chr=="l" then changeQuality(3) end
@@ -76,21 +106,20 @@ function set_pixel(x,y,lum)
     gpu.set(x,y,(".,-~:;=!*#$@"):sub(idx,idx))
   end
   if mode==1 then
-    gpu.setBackground(math.min(math.max(math.floor(lum*255),0),255)*0x10101)
+    color(nil,math.min(math.max(math.floor(lum*255),0),255))
     gpu.set(x,y," ")
   end
   -- listenForEvents()
 end
 
 function render_frame(A,B)
-  local size = ({0.7,0.55,0.4})[currentQuality]
+  local size = ({1,0.775,0.55})[currentQuality]*(0.9-math.max(screen_height-25,1)/25*0.2)
   local donut_width,donut_height = math.floor(math.min(screen_width,screen_height*2)*size),math.floor(math.min(screen_width/2,screen_height)*size)-1
 
   local zoom = 1.6/size
 
 
-  gpu.setForeground(0xFFFFFF)
-  gpu.setBackground(0x000000)
+  color(255,0)
   gpu.fill(1,1,donut_width,donut_height," ")
 
   -- precompute sines and cosines of A and B
@@ -171,13 +200,21 @@ while running do
   local time = computer.uptime()
   render_frame(1+time*1.4,1+time*0.6)
   listenForEvents()
+  -- ocelot.log("FPS: "..tostring(1/(computer.uptime()-time)))
 end
 
 gpu.setActiveBuffer(0)
 gpu.freeAllBuffers()
 
-gpu.setBackground(0x000000)
 gpu.setForeground(0xFFFFFF)
+gpu.setBackground(0x000000)
 gpu.fill(1,1,screen_width,screen_height," ")
+
+if gpuDepth==4 then
+  -- resets the color palette
+  gpu.setDepth(1)
+  gpu.setDepth(4)
+end
+
 termlib.cursorPosX=1
 termlib.cursorPosY=1
