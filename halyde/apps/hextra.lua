@@ -1,4 +1,4 @@
-local name, version = "hextra", "v1.0.0"
+local name, version = "hextra", "v1.0.1"
 
 
 local component,computer,event,fs=import("component"),import("computer"),import("event"),import("filesystem")
