@@ -1,4 +1,4 @@
-local name, version = "hextra", "v1.0.1"
+local name, version = "hextra", "v1.1.0"
 
 
 local component,computer,event,fs=import("component"),import("computer"),import("event"),import("filesystem")
@@ -33,11 +33,19 @@ if table.find(cmdargs,"-l") then
     local idx = table.find(cmdargs,"-l")
     table.remove(cmdargs,idx)
     limit = tonumber(table.remove(cmdargs,idx))
+    if not limit then
+        print("Argument -l must have a value.")
+        return shell.run("help "..name)
+    end
 end
 if table.find(cmdargs,"-n") then
     local idx = table.find(cmdargs,"-n")
     table.remove(cmdargs,idx)
     local nf = table.remove(cmdargs,idx)
+    if not nf then
+        print("Argument -n must have a value.")
+        return shell.run("help "..name)
+    end
     if string.find(nf,":") then
         local colon = string.find(nf,":")
         newFile = {tonumber(nf:sub(1,colon-1)),tonumber(nf:sub(colon+1),16)}
@@ -46,6 +54,10 @@ if table.find(cmdargs,"-n") then
     end
 else
     fpath = cmdargs[1]
+    if not fpath then
+        print("No file specified.")
+        return shell.run("help "..name)
+    end
 end
 
 local fileLength
@@ -593,8 +605,9 @@ end
 
 local function jump()
     local curnew = tonumber(prompt("Jump to location: ",string.format("0x%08x",cursor)))
+    if curnew==nil then return end
     curnew=math.max(math.min(curnew,fileLength-1),0)
-    if curnew==nil or curnew==cursor then return end
+    if curnew==cursor then return end
     scroll=math.max(math.min(math.floor(curnew/bytesPerRow),math.ceil(fileLength/bytesPerRow-height)),0)
 
     cursor=curnew
@@ -618,6 +631,7 @@ while true do
         if args[1]=="key_down" then
             cursorBlink = true
             local key = keyboard.keys[args[4]]
+            if key==nil then goto continue end
             local code = args[3]
             if code==13 then code=10 end
             if keyboard.ctrlDown then
