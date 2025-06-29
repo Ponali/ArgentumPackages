@@ -1,4 +1,4 @@
-local name, version = "hextra", "v1.1.0"
+local name, version = "hextra", "v1.2.0"
 
 
 local component,computer,event,fs=import("component"),import("computer"),import("event"),import("filesystem")
@@ -102,15 +102,25 @@ local function bin(x)
     return ret
 end
 
-local function bytesToInt(bytes)
+local littleEndian = false
+local function bytesToInt(bytes,le)
+    if le==nil then le=littleEndian end
     local res = 0
-    for i=1,#bytes do
-      res = (res<<8)&0xFFFFFFFF | bytes[i]
+
+    if le then
+        for i=#bytes,1,-1 do
+            res = (res<<8)&0xFFFFFFFF | bytes[i]
+        end
+    else
+        for i=1,#bytes do
+        res = (res<<8)&0xFFFFFFFF | bytes[i]
+        end
     end
+
     return res
 end
 
-local function readInt(readByte,n)
+local function readInt(readByte,n,le)
     n = n or 1
     if n==1 then return readByte(1) end
     -- local bytes, res = {string.byte(self:read(n),1,n)}, 0
@@ -118,7 +128,7 @@ local function readInt(readByte,n)
     for i=1,n do
         table.insert(bytes,readByte())
     end
-    return bytesToInt(bytes)
+    return bytesToInt(bytes,le)
 end
 
 local function largeNum(x)
@@ -468,11 +478,15 @@ local function updateDecodingTable()
     gpu.setForeground(0xFFFFFF)
 end
 
+local endiannessX = 1
+local endiannessY = #decodingTable+3
+
 local inputModeX = 1
-local inputModeY = #decodingTable+3
+local inputModeY = #decodingTable+4
 local inputMode = 0
 
 local function initControlsText()
+    -- input mode
     if width<80 then
         inputModeX = rowByteLength+5
         inputModeY = height
@@ -498,6 +512,28 @@ local function initControlsText()
         gpu.setForeground(0xFFFFFF)
     end
 
+    -- endianness
+    if width>=80 then
+        if width<115 then
+            endiannessX = width-#("Big")
+            gpu.set(width-#("ndianness: Big"),endiannessY,"ndianness: Big")
+            gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
+            gpu.set(width-#("^Endianness: Big"),endiannessY,"^E")
+            gpu.setForeground(0x60FF60) gpu.setBackground(0)
+            gpu.set(width-#("Big"),endiannessY,"Big")
+            gpu.setForeground(0xFFFFFF)
+        else
+            endiannessX = width-#("Big)")
+            gpu.set(width-#(" - Toggle endianness (Big)"),endiannessY," - Toggle endianness (Big)")
+            gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
+            gpu.set(width-#("^E - Toggle endianness (Big)"),endiannessY,"^E")
+            gpu.setForeground(0x60FF60) gpu.setBackground(0)
+            gpu.set(width-#("Big)"),endiannessY,"Big")
+            gpu.setForeground(0xFFFFFF)
+        end
+    end
+
+    -- other
     if width<80 then
         gpu.set(rowByteLength+5,height-1,"Save")
         gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
@@ -514,24 +550,24 @@ local function initControlsText()
         gpu.set(rowByteLength+2,height-3,"^J")
         gpu.setForeground(0xFFFFFF) gpu.setBackground(0)
     else
-        gpu.set(width-#("Jump to address"),#decodingTable+4,"Jump to address")
+        gpu.set(width-#("Jump to address")   ,#decodingTable+5,"Jump to address")
         gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
-        gpu.set(width-#("^J Jump to address"),#decodingTable+4,"^J")
+        gpu.set(width-#("^J Jump to address"),#decodingTable+5,"^J")
         gpu.setForeground(0xFFFFFF) gpu.setBackground(0)
 
-        gpu.set(width-#("Save as"),#decodingTable+5,"Save as")
+        gpu.set(width-#("Save as")           ,#decodingTable+6,"Save as")
         gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
-        gpu.set(width-#("Shift+^S Save as"),#decodingTable+5,"Shift+^S")
+        gpu.set(width-#("Shift+^S Save as")  ,#decodingTable+6,"Shift+^S")
         gpu.setForeground(0xFFFFFF) gpu.setBackground(0)
 
-        gpu.set(width-#("Save"),#decodingTable+6,"Save")
+        gpu.set(width-#("Save")              ,#decodingTable+7,"Save")
         gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
-        gpu.set(width-#("^S Save"),#decodingTable+6,"^S")
+        gpu.set(width-#("^S Save")           ,#decodingTable+7,"^S")
         gpu.setForeground(0xFFFFFF) gpu.setBackground(0)
 
-        gpu.set(width-#("Exit"),#decodingTable+7,"Exit")
+        gpu.set(width-#("Exit")              ,#decodingTable+8,"Exit")
         gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
-        gpu.set(width-#("^X Exit"),#decodingTable+7,"^X")
+        gpu.set(width-#("^X Exit")           ,#decodingTable+8,"^X")
         gpu.setForeground(0xFFFFFF) gpu.setBackground(0)
     end
 end
@@ -625,6 +661,21 @@ local function toggleInputMode()
     gpu.bitblt()
 end
 
+local function toggleEndianness()
+    if width<80 then return end
+
+    littleEndian=not littleEndian
+    gpu.setForeground(0x60FF60)
+    if littleEndian then
+        gpu.set(endiannessX,endiannessY,"Low")
+    else
+        gpu.set(endiannessX,endiannessY,"Big")
+    end
+    gpu.setForeground(0xFFFFFF)
+    updateDecodingTable()
+    gpu.bitblt()
+end
+
 while true do
     local args = {event.pull(0.5)}
     if args and args[1] then
@@ -639,6 +690,7 @@ while true do
                 if key=="s" then save(keyboard.shiftDown) end
                 if key=="j" then jump() end
                 if key=="i" then toggleInputMode() end
+                if key=="e" then toggleEndianness() end
             else
                 if key=="left" or code==8 then moveCur(-1)            gpu.bitblt() goto continue end
                 if key=="right"           then moveCur( 1)            gpu.bitblt() goto continue end
