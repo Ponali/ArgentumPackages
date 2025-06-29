@@ -1,4 +1,4 @@
-local name, version = "hextra", "v1.2.0"
+local name, version = "hextra", "v1.3.0"
 
 
 local component,computer,event,fs=import("component"),import("computer"),import("event"),import("filesystem")
@@ -29,6 +29,7 @@ local scroll = 0
 
 local cmdargs = {...}
 local limit, newFile, fpath
+local bufferFile = true
 if table.find(cmdargs,"-l") then
     local idx = table.find(cmdargs,"-l")
     table.remove(cmdargs,idx)
@@ -37,6 +38,10 @@ if table.find(cmdargs,"-l") then
         print("Argument -l must have a value.")
         return shell.run("help "..name)
     end
+end
+if table.find(cmdargs,"-d") then
+    table.remove(cmdargs,table.find(cmdargs,"-d"))
+    bufferFile=false
 end
 if table.find(cmdargs,"-n") then
     local idx = table.find(cmdargs,"-n")
@@ -65,7 +70,7 @@ if newFile==nil then
     if fpath:sub(1, 1) ~= "/" then
         fpath = fs.concat(shell.workingDirectory, fpath)
     end
-    local file = fs.open(fpath,"rb")
+    local file = fs.open(fpath,"rb",bufferFile)
     repeat
         local dlen = chunkLength
         if limit~=nil and #content>limit/chunkLength-1 then

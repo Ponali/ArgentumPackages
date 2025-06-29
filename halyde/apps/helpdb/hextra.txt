@@ -5,10 +5,13 @@ Advanced hex editor, with support for binary decoding and various features.
   FLAGS   Specifies extra options when executing the command.
     -l    Maximum length for reading a file.
           NOTE: When saving, all remaining bytes are removed.
+    -d    Read a file directly (no buffering).
+          NOTE: Using this flag will take more time reading the file, but less memory will be used.
     -n    Make a new file with a specified length, and a specified byte to fill.
 
 Examples:
-  hextra /LICENSE          Open /LICENSE as a binary file.
+  hextra /LICENSE          Opens /LICENSE as a binary file.
+  hextra /LICENSE -d       Opens /LICENSE without buffering.
   hextra /LICENSE -l 256   Opens the 256 first bytes of /LICENSE.
   hextra -n 256            Makes a file with 256 bytes filled with 0s.
   hextra -n 256:FF         Makes a file with 256 bytes filled with FF bytes.
