@@ -6,8 +6,8 @@ Advanced hex editor, with support for binary decoding and various features.
     -l    Maximum length for reading a file.
           NOTE: When saving, all remaining bytes are removed.
     -d    Read a file directly (no buffering).
-          NOTE: Using this flag will take more time reading the file, but less memory will be used.
-    -n    Make a new file with a specified length, and a specified byte to fill.
+          NOTE: Less memory will be used, but more time could be taken reading the file.
+    -n    Make a new file with a specified length, and a specified byte to fill it with.
 
 Examples:
   hextra /LICENSE          Opens /LICENSE as a binary file.

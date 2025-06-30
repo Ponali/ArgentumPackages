@@ -1,4 +1,4 @@
-local name, version = "hextra", "v1.4.0"
+local name, version = "hextra", "v1.4.1"
 
 
 local component,computer,event,fs,json=import("component"),import("computer"),import("event"),import("filesystem"),import("json")
@@ -73,6 +73,11 @@ local cursor = 0
 local scroll = 0
 
 
+local function invalidArgSyntax(err)
+    print(err)
+    return shell.run("help "..name)
+end
+
 local cmdargs = {...}
 if #cmdargs==0 then
     cmdargs = config.defaultCommand
@@ -82,11 +87,10 @@ local bufferFile = true
 if table.find(cmdargs,"-l") then
     local idx = table.find(cmdargs,"-l")
     table.remove(cmdargs,idx)
-    limit = tonumber(table.remove(cmdargs,idx))
-    if not limit then
-        print("Argument -l must have a value.")
-        return shell.run("help "..name)
-    end
+    local arg = table.remove(cmdargs,idx)
+    if not limit then return invalidArgSyntax("Argument -l must have a value.") end
+    limit = tonumber(arg)
+    if not limit then return invalidArgSyntax("Cannot convert value of argument -l to number") end
 end
 if table.find(cmdargs,"-d") then
     table.remove(cmdargs,table.find(cmdargs,"-d"))
@@ -96,15 +100,20 @@ if table.find(cmdargs,"-n") then
     local idx = table.find(cmdargs,"-n")
     table.remove(cmdargs,idx)
     local nf = table.remove(cmdargs,idx)
-    if not nf then
-        print("Argument -n must have a value.")
-        return shell.run("help "..name)
-    end
+    if not nf then return invalidArgSyntax("Argument -n must have a value.") end
     if string.find(nf,":") then
         local colon = string.find(nf,":")
-        newFile = {tonumber(nf:sub(1,colon-1)),tonumber(nf:sub(colon+1),16)}
+        local flen,fill=tonumber(nf:sub(1,colon-1)),tonumber(nf:sub(colon+1),16)
+        if flen==nil then return invalidArgSyntax("Argument -n: Cannot convert file length to number") end
+        if fill==nil then return invalidArgSyntax("Argument -n: Cannot convert fill byte to number") end
+        newFile = {flen,fill}
     else
-        newFile = {tonumber(nf),0}
+        local flen = tonumber(nf)
+        if flen==nil then return invalidArgSyntax("Argument -n: Cannot convert value to number") end
+        newFile = {flen,0}
+    end
+    if limit~=nil then
+        newFile[1] = math.min(newFile[1],limit)
     end
 else
     fpath = cmdargs[1]
@@ -119,6 +128,8 @@ if newFile==nil then
     if fpath:sub(1, 1) ~= "/" then
         fpath = fs.concat(shell.workingDirectory, fpath)
     end
+    if not filesystem.exists(fpath) then return print("File doesn't exist ("..fpath..")") end
+    if filesystem.isDirectory(fpath) then return print("Cannot open directory ("..fpath..")") end
     local file = fs.open(fpath,"rb",bufferFile)
     repeat
         local dlen = chunkLength
