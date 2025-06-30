@@ -1,7 +1,7 @@
-local name, version = "hextra", "v1.3.0"
+local name, version = "hextra", "v1.4.0"
 
 
-local component,computer,event,fs=import("component"),import("computer"),import("event"),import("filesystem")
+local component,computer,event,fs,json=import("component"),import("computer"),import("event"),import("filesystem"),import("json")
 local gpu = component.gpu
 local width,height = gpu.getResolution()
 
@@ -12,12 +12,58 @@ local function yieldIfRequired()
     end
 end
 
-local content = {}
-local chunkLength = 256
+local function default(arr,idx,val)
+    if arr[idx]==nil then arr[idx] = val end
+end
 
-local bytesPerRow = 16
-local rowIdxLength = 8
-local bytePadding = 1
+-- config
+if not fs.exists("/halyde/config/hextra.json") then
+  fs.copy("/halyde/config/generate/hextra.json", "/halyde/config/hextra.json")
+end
+local handle, data, tmpdata = fs.open("/halyde/config/hextra.json", "r"), "", nil
+repeat
+  tmpdata = handle:read(math.huge or math.maxinteger)
+  data = data .. (tmpdata or "")
+until not tmpdata
+handle:close()
+local config = json.decode(data)
+default(config,"memory",{})
+default(config,"design",{})
+default(config,"colors",{})
+default(config,"defaultCommand",{})
+for i,v in pairs(config.colors) do
+    config.colors[i] = tonumber(config.colors[i])
+end
+
+default(config.design,"bytesUppercase",    false)
+default(config.design,"codePointUppercase",true)
+default(config.design,"rowIndexUppercase", false)
+
+default(config.colors,"mainBackground"          ,0x000000)
+default(config.colors,"mainForeground"          ,0xFFFFFF)
+default(config.colors,"keyBackground"           ,0xFFFFFF)
+default(config.colors,"keyForeground"           ,0x000000)
+default(config.colors,"cursorBackground"        ,0xFFFFFF)
+default(config.colors,"cursorForeground"        ,0x000000)
+default(config.colors,"rowIndex"                ,0x999999)
+default(config.colors,"emptyByte"               ,0x707070)
+default(config.colors,"nonPrintableByte"        ,0x0080FF)
+default(config.colors,"typingByte"              ,0xFF8000)
+default(config.colors,"decodingTableBorder"     ,0x80FF80)
+default(config.colors,"decodingTableEntryTitle" ,0xEEEEEE)
+default(config.colors,"decodingTableOutput"     ,0xFFFFFF)
+default(config.colors,"decodingTableEmptyOutput",0x808080)
+default(config.colors,"decodingTableError"      ,0xFF8888)
+default(config.colors,"toggleableEntry"         ,0x60FF60)
+default(config.colors,"version"                 ,0x606060)
+
+
+local content = {}
+local chunkLength = config.chunkLength or 256
+
+local bytesPerRow = config.design.bytesPerRow or 16
+local rowIdxLength = config.design.rowIdxLength or 8
+local bytePadding = config.design.bytePadding or 1
 if width<115 then bytePadding=0 end
 -- local rowLength = rowIdxLength+1+bytesPerRow*(2+bytePadding)-bytePadding+1+bytesPerRow
 local rowLength = rowIdxLength+2+bytesPerRow*(3+bytePadding)-bytePadding
@@ -28,6 +74,9 @@ local scroll = 0
 
 
 local cmdargs = {...}
+if #cmdargs==0 then
+    cmdargs = config.defaultCommand
+end
 local limit, newFile, fpath
 local bufferFile = true
 if table.find(cmdargs,"-l") then
@@ -93,6 +142,13 @@ else
         yieldIfRequired()
     until #content>=newFile[1]/chunkLength
     fileLength = newFile[1]
+end
+
+local function toHex(num,uppercase,pad)
+    local cmd = "%"
+    if pad~=nil then cmd=cmd.."0"..tostring(pad) end
+    if uppercase then cmd=cmd.."X" else cmd=cmd.."x" end
+    return string.format(cmd,num)
 end
 
 -- decoding table
@@ -267,7 +323,7 @@ local decodingTable = {
             local bytes = {}
             for i=1,4 do table.insert(bytes,readByte()) end
             local exp = ((bytes[1]&0x7F)<<1)|bytes[2]>>7
-            local mant = bytesToInt({bytes[2]&0x7F,bytes[3],bytes[4]})
+            local mant = bytesToInt({bytes[2]&0x7F,bytes[3],bytes[4]},false)
             local absv = (1+mant/8388608)*math.pow(2,exp-127)
             local sign = 1
             if bytes[1]&0x80>0 then sign=-1 end
@@ -286,7 +342,7 @@ local decodingTable = {
         ["shortTitle"]="Index",
         ["maxLength"]=#("U+10FFFF"),
         ["bytes"]=1,
-        ["decode"]=function(readByte) return string.format("U+%04x",readUniChar(readByte)) end
+        ["decode"]=function(readByte) return "U+"..toHex(readUniChar(readByte),config.design.codePointUppercase,4) end
     }
 }
 
@@ -310,7 +366,8 @@ end
 
 local rbuf = assert(gpu.allocateBuffer(),"No render buffer available.")
 gpu.setActiveBuffer(rbuf)
-gpu.setBackground(0)
+gpu.setBackground(config.colors.mainBackground)
+gpu.setForeground(config.colors.mainForeground)
 gpu.fill(1,1,160,50," ")
 
 local function prompt(txt,default)
@@ -355,9 +412,9 @@ local function renderByte(idx,cursorHighlight)
     local textX = 10+bytesPerRow*(2+bytePadding)-bytePadding+1
     local y = math.floor(idx/bytesPerRow)+1-scroll
     if idx>=fileLength then
-        gpu.setForeground(0x707070)
+        gpu.setForeground(config.colors.emptyByte)
         gpu.set(screenX,y,"--")
-        gpu.setForeground(0xFFFFFF)
+        gpu.setForeground(config.colors.mainForeground)
         return
     end
     local byte = getByte(idx)
@@ -365,25 +422,25 @@ local function renderByte(idx,cursorHighlight)
     local onCursor = idx==cursor and cursorHighlight
 
     if onCursor then
-        gpu.setForeground(0)
-        gpu.setBackground(0xFFFFFF)
+        gpu.setForeground(config.colors.cursorForeground)
+        gpu.setBackground(config.colors.cursorBackground)
     else
-        if specialByte then gpu.setForeground(0x0080FF) end
+        if specialByte then gpu.setForeground(config.colors.nonPrintableByte) end
     end
 
-    local bhex = string.format("%02x",byte)
+    local bhex = toHex(byte,config.design.bytesUppercase,2)
     if #hextype==0 then
         gpu.set(screenX,y,bhex)
     else
-        if not onCursor then gpu.setForeground(0xFF8000) end
+        if not onCursor then gpu.setForeground(config.colors.typingByte) end
         gpu.set(screenX,y,hextype..bhex:sub(2))
-        if not onCursor then gpu.setForeground(0xFFFFFF) end
+        if not onCursor then gpu.setForeground(config.colors.mainForeground) end
     end
 
     if width>=80 then
         if specialByte then
             gpu.set(textX+x,y,".")
-            if not onCursor then gpu.setForeground(0xFFFFFF) end
+            if not onCursor then gpu.setForeground(config.colors.mainForeground) end
         else
             local ch
             if byte>127 then ch=string.char(0xC0|(byte>>6),0x80|(byte&0x3F)) else ch=string.char(byte) end
@@ -391,15 +448,15 @@ local function renderByte(idx,cursorHighlight)
         end
     end
     if onCursor then
-        gpu.setForeground(0xFFFFFF)
-        gpu.setBackground(0)
+        gpu.setForeground(config.colors.mainForeground)
+        gpu.setBackground(config.colors.mainBackground)
     end
 end
 
 local function renderRow(y)
-    gpu.setForeground(0x999999)
-    gpu.set(1,y,string.format("%0"..rowIdxLength.."x",(y-1+scroll)*bytesPerRow))
-    gpu.setForeground(0xFFFFFF)
+    gpu.setForeground(config.colors.rowIndex)
+    gpu.set(1,y,toHex((y-1+scroll)*bytesPerRow,config.design.rowIndexUppercase,rowIdxLength):sub(-rowIdxLength))
+    gpu.setForeground(config.colors.mainForeground)
     for i=(y-1)*bytesPerRow,y*bytesPerRow-1 do renderByte(i+scroll*bytesPerRow,true) end
 end
 
@@ -414,7 +471,7 @@ local function renderDecodingBorder()
     if width<80 then return end
     local start = width-2-decodingOutputLength-decodingTitleLength
     local tableHeight = #decodingTable
-    gpu.setForeground(0x80FF80)
+    gpu.setForeground(config.colors.decodingTableBorder)
     gpu.set(width,1,"┓")
     gpu.set(width-1-decodingOutputLength,1,"┯")
     gpu.set(start,1,"┏")
@@ -431,12 +488,12 @@ local function renderDecodingBorder()
 
     gpu.set(width-#("Decoding table")-1,1,"Decoding table")
 
-    gpu.setForeground(0xEEEEEE)
+    gpu.setForeground(config.colors.decodingTableEntryTitle)
     for i,v in ipairs(decodingTable) do
         gpu.set(width-1-decodingOutputLength-#v.title,i+1,v.title)
     end
 
-    gpu.setForeground(0xFFFFFF)
+    gpu.setForeground(config.colors.mainForeground)
 end
 
 local function updateDecodingTable()
@@ -448,17 +505,17 @@ local function updateDecodingTable()
         return out
     end
 
-    gpu.setBackground(0)
+    gpu.setBackground(config.colors.mainBackground)
     local x = width-decodingOutputLength
     gpu.fill(x,2,decodingOutputLength,#decodingTable," ")
 
     for i=1,#decodingTable do
         if cursor+decodingTable[i].bytes>fileLength then
-            gpu.setForeground(0x808080)
+            gpu.setForeground(config.colors.decodingTableEmptyOutput)
             gpu.set(x,i+1,noBytesText)
             goto continue
         end
-        gpu.setForeground(0xFFFFFF)
+        gpu.setForeground(config.colors.decodingTableOutput)
         readcur=cursor
         local out
         local success = pcall(function()
@@ -466,21 +523,21 @@ local function updateDecodingTable()
         end)
         if success then
             if out==nil then
-                gpu.setForeground(0x808080)
+                gpu.setForeground(config.colors.decodingTableEmptyOutput)
                 gpu.set(x,i+1,"nil")
             elseif out=="" then
-                gpu.setForeground(0x808080)
+                gpu.setForeground(config.colors.decodingTableEmptyOutput)
                 gpu.set(x,i+1,"Empty")
             else
                 gpu.set(x,i+1,out)
             end
         else
-            gpu.setForeground(0xFF8888)
+            gpu.setForeground(config.colors.decodingTableError)
             gpu.set(x,i+1,"Error")
         end
         ::continue::
     end
-    gpu.setForeground(0xFFFFFF)
+    gpu.setForeground(config.colors.mainForeground)
 end
 
 local endiannessX = 1
@@ -496,25 +553,25 @@ local function initControlsText()
         inputModeX = rowByteLength+5
         inputModeY = height
         gpu.set(rowByteLength+5,inputModeY,"Bytes")
-        gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
+        gpu.setForeground(config.colors.keyForeground) gpu.setBackground(config.colors.keyBackground)
         gpu.set(rowByteLength+2,inputModeY,"^I")
-        gpu.setForeground(0xFFFFFF) gpu.setBackground(0)
+        gpu.setForeground(config.colors.mainForeground) gpu.setBackground(config.colors.mainBackground)
     elseif width<115 then
         inputModeX = width-#("Bytes")
         gpu.set(width-#("nput mode: Bytes"),inputModeY,"nput mode:")
-        gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
+        gpu.setForeground(config.colors.keyForeground) gpu.setBackground(config.colors.keyBackground)
         gpu.set(width-#("^Input mode: Bytes"),inputModeY,"^I")
-        gpu.setForeground(0x60FF60) gpu.setBackground(0)
+        gpu.setForeground(config.colors.toggleableEntry) gpu.setBackground(config.colors.mainBackground)
         gpu.set(width-#("Bytes"),inputModeY,"Bytes")
-        gpu.setForeground(0xFFFFFF)
+        gpu.setForeground(config.colors.mainForeground)
     else
         inputModeX = width-#("Bytes)")
         gpu.set(width-#(" - Toggle input mode (Bytes)"),inputModeY," - Toggle input mode (Bytes)")
-        gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
+        gpu.setForeground(config.colors.keyForeground) gpu.setBackground(config.colors.keyBackground)
         gpu.set(width-#("^I - Toggle input mode (Bytes)"),inputModeY,"^I")
-        gpu.setForeground(0x60FF60) gpu.setBackground(0)
+        gpu.setForeground(config.colors.toggleableEntry) gpu.setBackground(config.colors.mainBackground)
         gpu.set(width-#("Bytes)"),inputModeY,"Bytes")
-        gpu.setForeground(0xFFFFFF)
+        gpu.setForeground(config.colors.mainForeground)
     end
 
     -- endianness
@@ -522,58 +579,43 @@ local function initControlsText()
         if width<115 then
             endiannessX = width-#("Big")
             gpu.set(width-#("ndianness: Big"),endiannessY,"ndianness: Big")
-            gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
+            gpu.setForeground(config.colors.keyForeground) gpu.setBackground(config.colors.keyBackground)
             gpu.set(width-#("^Endianness: Big"),endiannessY,"^E")
-            gpu.setForeground(0x60FF60) gpu.setBackground(0)
+            gpu.setForeground(config.colors.toggleableEntry) gpu.setBackground(config.colors.mainBackground)
             gpu.set(width-#("Big"),endiannessY,"Big")
-            gpu.setForeground(0xFFFFFF)
+            gpu.setForeground(config.colors.mainForeground)
         else
             endiannessX = width-#("Big)")
             gpu.set(width-#(" - Toggle endianness (Big)"),endiannessY," - Toggle endianness (Big)")
-            gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
+            gpu.setForeground(config.colors.keyForeground) gpu.setBackground(config.colors.keyBackground)
             gpu.set(width-#("^E - Toggle endianness (Big)"),endiannessY,"^E")
-            gpu.setForeground(0x60FF60) gpu.setBackground(0)
+            gpu.setForeground(config.colors.toggleableEntry) gpu.setBackground(config.colors.mainBackground)
             gpu.set(width-#("Big)"),endiannessY,"Big")
-            gpu.setForeground(0xFFFFFF)
+            gpu.setForeground(config.colors.mainForeground)
         end
     end
 
     -- other
     if width<80 then
         gpu.set(rowByteLength+5,height-1,"Save")
-        gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
-        gpu.set(rowByteLength+2,height-1,"^S")
-        gpu.setForeground(0xFFFFFF) gpu.setBackground(0)
-
         gpu.set(rowByteLength+5,height-2,"Exit")
-        gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
-        gpu.set(rowByteLength+2,height-2,"^X")
-        gpu.setForeground(0xFFFFFF) gpu.setBackground(0)
-
         gpu.set(rowByteLength+5,height-3,"Jump")
-        gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
+        gpu.setForeground(config.colors.keyForeground) gpu.setBackground(config.colors.keyBackground)
+        gpu.set(rowByteLength+2,height-1,"^S")
+        gpu.set(rowByteLength+2,height-2,"^X")
         gpu.set(rowByteLength+2,height-3,"^J")
-        gpu.setForeground(0xFFFFFF) gpu.setBackground(0)
+        gpu.setForeground(config.colors.mainForeground) gpu.setBackground(config.colors.mainBackground)
     else
         gpu.set(width-#("Jump to address")   ,#decodingTable+5,"Jump to address")
-        gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
-        gpu.set(width-#("^J Jump to address"),#decodingTable+5,"^J")
-        gpu.setForeground(0xFFFFFF) gpu.setBackground(0)
-
         gpu.set(width-#("Save as")           ,#decodingTable+6,"Save as")
-        gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
-        gpu.set(width-#("Shift+^S Save as")  ,#decodingTable+6,"Shift+^S")
-        gpu.setForeground(0xFFFFFF) gpu.setBackground(0)
-
         gpu.set(width-#("Save")              ,#decodingTable+7,"Save")
-        gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
-        gpu.set(width-#("^S Save")           ,#decodingTable+7,"^S")
-        gpu.setForeground(0xFFFFFF) gpu.setBackground(0)
-
         gpu.set(width-#("Exit")              ,#decodingTable+8,"Exit")
-        gpu.setForeground(0) gpu.setBackground(0xFFFFFF)
+        gpu.setForeground(config.colors.keyForeground) gpu.setBackground(config.colors.keyBackground)
+        gpu.set(width-#("^J Jump to address"),#decodingTable+5,"^J")
+        gpu.set(width-#("Shift+^S Save as")  ,#decodingTable+6,"Shift+^S")
+        gpu.set(width-#("^S Save")           ,#decodingTable+7,"^S")
         gpu.set(width-#("^X Exit")           ,#decodingTable+8,"^X")
-        gpu.setForeground(0xFFFFFF) gpu.setBackground(0)
+        gpu.setForeground(config.colors.mainForeground) gpu.setBackground(config.colors.mainBackground)
     end
 end
 
@@ -583,12 +625,12 @@ local function initSideContent()
 
     initControlsText()
 
-    gpu.setForeground(0x606060)
+    gpu.setForeground(config.colors.version)
     local str = name.." "..version
     local y = height
     if width<80 then str=version y=1 end
     gpu.set(width-#str+1,y,str)
-    gpu.setForeground(0xFFFFFF)
+    gpu.setForeground(config.colors.mainForeground)
 end
 
 renderAllRows()
@@ -660,9 +702,9 @@ end
 
 local function toggleInputMode()
     inputMode=(inputMode+1)%2
-    gpu.setForeground(0x60FF60)
+    gpu.setForeground(config.colors.toggleableEntry)
     gpu.set(inputModeX,inputModeY,({"Bytes","Text "})[inputMode+1])
-    gpu.setForeground(0xFFFFFF)
+    gpu.setForeground(config.colors.mainForeground)
     gpu.bitblt()
 end
 
@@ -670,13 +712,13 @@ local function toggleEndianness()
     if width<80 then return end
 
     littleEndian=not littleEndian
-    gpu.setForeground(0x60FF60)
+    gpu.setForeground(config.colors.toggleableEntry)
     if littleEndian then
         gpu.set(endiannessX,endiannessY,"Low")
     else
         gpu.set(endiannessX,endiannessY,"Big")
     end
-    gpu.setForeground(0xFFFFFF)
+    gpu.setForeground(config.colors.mainForeground)
     updateDecodingTable()
     gpu.bitblt()
 end
@@ -721,6 +763,6 @@ gpu.setActiveBuffer(0)
 gpu.freeBuffer(rbuf)
 
 gpu.setBackground(0)
-gpu.fill(1,1,160,50," ")
+gpu.fill(1,1,width,height," ")
 termlib.cursorPosX=1
 termlib.cursorPosY=1
