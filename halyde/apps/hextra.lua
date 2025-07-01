@@ -1,4 +1,4 @@
-local name, version = "hextra", "v1.4.1"
+local name, version = "hextra", "v1.4.2"
 
 
 local component,computer,event,fs,json=import("component"),import("computer"),import("event"),import("filesystem"),import("json")
@@ -128,8 +128,8 @@ if newFile==nil then
     if fpath:sub(1, 1) ~= "/" then
         fpath = fs.concat(shell.workingDirectory, fpath)
     end
-    if not filesystem.exists(fpath) then return print("File doesn't exist ("..fpath..")") end
-    if filesystem.isDirectory(fpath) then return print("Cannot open directory ("..fpath..")") end
+    if not fs.exists(fpath) then return print("File doesn't exist ("..fpath..")") end
+    if fs.isDirectory(fpath) then return print("Cannot open directory ("..fpath..")") end
     local file = fs.open(fpath,"rb",bufferFile)
     repeat
         local dlen = chunkLength
