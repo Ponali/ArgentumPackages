@@ -4,7 +4,7 @@ This is a library, meant to run on Halyde, that can read and decode files with t
 This is a library: If you're looking for a frontend to use this library on, check [OCIF Tools](../ocif-tools/README.md).
 
 ## Compatibility
-There isn't any support for dimming characters with alpha values that are strictly between 0 and 1 when showing images on the screen.
+Dimming characters with alpha values that are strictly between 0 and 1 is supported when showing images on the screen.
 
 Currently Supported codecs:
 
