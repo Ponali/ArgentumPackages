@@ -105,7 +105,7 @@ local function to24Bit(x)
     return palette[x+1]
 end
 
-local function encodeComplex(file,width,height,lengthOffset,positionOffset)
+local function readComplex(file,width,height,lengthOffset,positionOffset)
     local img = ocif.new(width,height)
     for alpha = 1, file:readBytes(1) + lengthOffset do
         local currentAlpha = file:readBytes(1) / 255
@@ -141,15 +141,28 @@ local function encodeComplex(file,width,height,lengthOffset,positionOffset)
 end
 
 local codecs = {
-    [6]={
+    [5]={
+        ["meta"]=function(file) return file:readBytes(2),file:readBytes(2) end,
+        ["pixel"]=function(file,width,height)
+            local img = ocif.new(width,height)
+            for i=0,width*height-1 do
+                local bg = to24Bit(file:readBytes(1))
+                local fg = to24Bit(file:readBytes(1))
+                local al = file:readBytes(1) / 255
+                local chr = file:readUnicodeChar()
+                img:set((i%width)+1,math.floor(i/width)+1,chr,fg,bg,al)
+            end
+            return img
+        end
+    },[6]={
         ["meta"]=function(file) return file:readBytes(),file:readBytes() end,
-        ["pixel"]=function(file,width,height) return encodeComplex(file,width,height,0,0) end
+        ["pixel"]=function(file,width,height) return readComplex(file,width,height,0,0) end
     },[7]={
         ["meta"]=function(file) return file:readBytes(),file:readBytes() end,
-        ["pixel"]=function(file,width,height) return encodeComplex(file,width,height,1,0) end
+        ["pixel"]=function(file,width,height) return readComplex(file,width,height,1,0) end
     },[8]={
         ["meta"]=function(file) return file:readBytes()+1,file:readBytes()+1 end,
-        ["pixel"]=function(file,width,height) return encodeComplex(file,width,height,1,1) end
+        ["pixel"]=function(file,width,height) return readComplex(file,width,height,1,1) end
     }
 }
 

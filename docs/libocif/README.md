@@ -8,7 +8,7 @@ There isn't any support for dimming characters with alpha values that are strict
 
 Currently Supported codecs:
 
-- [ ] 5 (raw)
+- [x] 5 (raw)
 - [x] 6 (complex)
 - [x] 7 (complex)
 - [x] 8 (complex)
