@@ -3,5 +3,7 @@
     "drives":[],
 
     "readBuffer": true,
+    "writeBuffer": true,
+    "writeUpdate": 2,
     "sectorSize": 512
 }

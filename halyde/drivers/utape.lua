@@ -1,4 +1,5 @@
 local component = import("component")
+local computer = import("computer")
 local json = import("json")
 local fs = import("filesystem")
 local event = import("event")
@@ -19,8 +20,13 @@ local config = json.decode(data)
 default(config,"disabled",false)
 default(config,"sectorSize",512)
 default(config,"readBuffer",true)
+default(config,"writeBuffer",true)
+default(config,"writeUpdate",2)
 local drives = config.drives
 local readBuffer = config.readBuffer
+local writeBuffer = config.writeBuffer
+local writeUpdate = config.writeUpdate
+if writeBuffer then readBuffer=true end
 
 local function containsDrive(id)
   if drives==nil or #drives==0 then return true end
@@ -56,10 +62,18 @@ driver.onStartup = function()
         cur=cur+1
       end
     end
+    local writeChanges, writeChangeTime = false, 0
     local bufferSect,bufferData
+    -- bufferSect starts counting at 0, not 1
     local function updateBuffer(pos)
       local sect = math.floor((pos-1)/sectorSize)
       if bufferSect==nil or bufferSect~=sect then
+        if writeBuffer and writeChanges then
+          seek(bufferSect*sectorSize+1)
+          write(bufferData)
+          writeChanges = false
+        end
+        -- seek to new sector
         bufferSect=sect
         seek(sect*sectorSize+1)
         bufferData=read(sectorSize)
@@ -84,8 +98,19 @@ driver.onStartup = function()
       ["writeByte"]=function(pos,value)
         checkArg(1,pos,"number")
         checkArg(2,value,"number")
-        seek(pos)
-        write(value)
+        if readBuffer then
+          updateBuffer(pos)
+          bufferData = bufferData:sub(1,(pos-1)%sectorSize)..string.char(value)..bufferData:sub(((pos-1)%sectorSize)+2)
+        end
+        if writeBuffer then
+          if not writeChanges then
+            writeChanges = true
+            writeChangeTime = computer.uptime()
+          end
+        else
+          seek(pos)
+          write(value)
+        end
       end,
       ["readSector"]=function(sector)
         checkArg(1,sector,"number")
@@ -100,17 +125,28 @@ driver.onStartup = function()
       ["writeSector"]=function(sector,value)
         checkArg(1,sector,"number")
         checkArg(2,value,"string")
+        if readBuffer then
+          bufferData = value..bufferData:sub(#value+1)
+        end
         seek((sector-1)*sectorSize+1)
         write(value)
       end
-    }
+    }, function()
+      if writeBuffer and writeChanges then
+        if computer.uptime()>writeChangeTime+writeUpdate then
+          seek(bufferSect*sectorSize+1)
+          write(bufferData)
+          writeChanges = false
+        end
+      end
+    end
   end
   local coroutines = {}
   local function handleComponent(id)
     if not containsDrive(id) then return end
     local tapeProxy = component.proxy(id)
     if not tapeProxy then return end
-    local driveProxy = handleProxy(tapeProxy)
+    local driveProxy, proxyCorFunc = handleProxy(tapeProxy)
     local readyBef = tapeProxy.isReady()
     if readyBef then component.virtual.add(id,"drive",driveProxy) end
     local cor = cormgr.addCoroutine(function()
@@ -128,6 +164,7 @@ driver.onStartup = function()
               component.virtual.remove(id)
             end
           end
+          proxyCorFunc()
         end
         coroutine.yield()
       end

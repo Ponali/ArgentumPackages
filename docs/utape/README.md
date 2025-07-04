@@ -13,5 +13,19 @@ The config file is located at `/halyde/config/utape.json`, and contains 4 parame
 
 - `disabled`: If true, utape will not run.
 - `drives`: A list of tape drives to convert into unmanaged drives.
-- `readBuffer`: If true, utape will buffer the sector of all read instructions. More bytes will be read in the tape, but it will generally be faster.
+- `readBuffer`: Whether to buffer read instructions or not (see [Buffering](#buffering).)
+- `writeBuffer`: Whether to buffer write instructions or not (see [Buffering](#buffering).)
+- `writeUpdate`: Amount of time for 
 - `sectorSize`: The size (in bytes) of one sector in the simulated drive. It is generally recommended to leave this at 512 bytes.
+
+## Buffering
+Programs and/or other drivers that use unmanaged drives might access content by calling the drive for every byte, instead of every sector. For a tape drive, this is very inefficient, so buffering comes into play.
+
+Buffering will read more content from the tape than requested, so that when this extra content gets requested, it can be instantly returned without needing to call the tape drive again. This makes for a speed boost in read/write speeds.
+
+---
+
+Here are the changes, in-depth, that buffering will do when activated:
+
+- When a byte gets read, the buffer gets set to the contents of the sector it resides on, so that reading bytes from the same sector later on will use the buffer rather than reading from the tape
+- When a byte gets written to, it will get written into the buffer instead of the tape. If two seconds passes (`writeUpdate` value), or another sector is getting accessed, the tape will get updated with the new content of the buffer.
