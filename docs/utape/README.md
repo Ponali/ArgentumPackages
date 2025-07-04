@@ -9,7 +9,9 @@ To install and use, run `ag install utape`, confirm, then `reboot`.
 ## Usage
 After installing, all tapes are automatically turned into unmanaged drives. If you would like to use a tape drive for audio, you can edit the config file.
 
-The config file is located at `/halyde/config/utape.json`, and contains 2 parameters:
+The config file is located at `/halyde/config/utape.json`, and contains 4 parameters:
 
+- `disabled`: If true, utape will not run.
 - `drives`: A list of tape drives to convert into unmanaged drives.
 - `readBuffer`: If true, utape will buffer the sector of all read instructions. More bytes will be read in the tape, but it will generally be faster.
+- `sectorSize`: The size (in bytes) of one sector in the simulated drive. It is generally recommended to leave this at 512 bytes.

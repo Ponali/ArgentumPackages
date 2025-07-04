@@ -12,10 +12,15 @@ repeat
   data = data .. (tmpdata or "")
 until not tmpdata
 handle:close()
+local function default(arr,idx,val)
+    if arr[idx]==nil then arr[idx] = val end
+end
 local config = json.decode(data)
+default(config,"disabled",false)
+default(config,"sectorSize",512)
+default(config,"readBuffer",true)
 local drives = config.drives
 local readBuffer = config.readBuffer
-if readBuffer==nil then readBuffer=true end
 
 local function containsDrive(id)
   if drives==nil or #drives==0 then return true end
@@ -32,7 +37,7 @@ driver.onStartup = function()
   local function handleProxy(tape)
     local cur = 1
     tape.seek(-math.huge)
-    local sectorSize = 512
+    local sectorSize = config.sectorSize
     local function seek(pos)
       local dist = pos-cur
       if dist~=0 then tape.seek(dist) end
@@ -149,6 +154,8 @@ driver.onStartup = function()
     end
   end,"utape")
 end
--- driver.onStartup = function() end
+if config.disabled then
+  driver.onStartup = function() end
+end
 
 return driver

@@ -1,4 +1,7 @@
 {
+    "disabled": false,
     "drives":[],
-    "readBuffer": true
+
+    "readBuffer": true,
+    "sectorSize": 512
 }
