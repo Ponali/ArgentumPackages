@@ -1,7 +1,7 @@
-local name, version = "hextra", "v1.4.2"
+local name, version = "hextra", "v1.5.0"
 
 
-local component,computer,event,fs,json=import("component"),import("computer"),import("event"),import("filesystem"),import("json")
+local component,computer,event,fs,json,unicode=import("component"),import("computer"),import("event"),import("filesystem"),import("json"),import("unicode")
 local gpu = component.gpu
 local width,height = gpu.getResolution()
 
@@ -203,54 +203,21 @@ local function readInt(readByte,n,le)
     return bytesToInt(bytes,le)
 end
 
-local function largeNum(x)
-    if math.abs(x)>9223372036854775807 then return string.format("%e",x) end -- 64bit integer limit. anything above have no integer representation
-    if math.abs(x)>=1e+13 then return string.format("%d",x) end
-    return string.format("%f",x)
+local function writeInt(num,bytes)
+    if bytes==1 then return {num&255} end
+    local out = {}
+    if littleEndian then
+        for i=1,bytes do out[i]=(num>>((i-1)*8))&255 end
+    else
+        for i=1,bytes do out[i]=(num>>((bytes-i)*8))&255 end
+    end
+    return out
 end
 
-local function readUniChar(readByte)
-    local function inRange(min,max,...)
-        for _,v in ipairs({...}) do
-            if not (v and v>=min and v<max) then return false end
-        end
-        return true
-    end
-    local function readByte0() return readByte() or 0 end
-
-    local byte = readByte()
-
-    if byte < 0x80 then
-        -- ASCII character (0xxxxxxx)
-        return byte
-    elseif byte < 0xC0 then
-        -- Continuation byte (10xxxxxx), invalid at start position
-        return nil
-    elseif byte < 0xE0 then
-        -- 2-byte sequence (110xxxxx 10xxxxxx)
-        local byte2 = readByte0()
-        if inRange(0x80,0xC0,byte2) then
-            local code_point = ((byte & 0x1F) << 6) | (byte2 & 0x3F)
-            return code_point
-        end
-    elseif byte < 0xF0 then
-        -- 3-byte sequence (1110xxxx 10xxxxxx 10xxxxxx)
-        local byte2, byte3 = readByte0(), readByte0()
-        if inRange(0x80,0xC0,byte2,byte3)then
-            local code_point = ((byte & 0x0F) << 12) | ((byte2 & 0x3F) << 6) | (byte3 & 0x3F)
-            return code_point
-        end
-    elseif byte < 0xF8 then
-        -- 4-byte sequence (11110xxx 10xxxxxx 10xxxxxx 10xxxxxx)
-        local byte2, byte3, byte4 = readByte0(), readByte0(), readByte0()
-        if inRange(0x80,0xC0,byte2,byte3,byte4) then
-            local code_point = ((byte & 0x07) << 18) | ((byte2 & 0x3F) << 12) | ((byte3 & 0x3F) << 6) | (byte4 & 0x3F)
-            return code_point
-        end
-    end
-
-    -- Invalid UTF-8 byte sequence
-    return nil
+local function largeNum(x)
+    if math.abs(x)>math.maxinteger then return string.format("%e",x) end
+    if math.abs(x)>=1e+12 then return string.format("%d",x) end
+    return string.format("%f",x)
 end
 
 local decodingTable = {
@@ -262,68 +229,94 @@ local decodingTable = {
         ["decode"]=function(readByte)
             local out = bin(readByte())
             return string.rep("0",8-#out)..out
-        end
+        end,
+        ["write"]=function(input) return {math.max(math.min(tonumber(input,2),255),0)} end
     },
     {
         ["title"]="Octal",
         ["shortTitle"]="oct",
         ["maxLength"]=3,
         ["bytes"]=1,
-        ["decode"]=function(readByte) return string.format("%o",readByte()) end
+        ["decode"]=function(readByte) return string.format("%o",readByte()) end,
+        ["write"]=function(input) return {math.max(math.min(tonumber(input,8),255),0)} end
     },
     {
         ["title"]="Signed 8-bit",
         ["shortTitle"]="int8",
         ["maxLength"]=#("-128"),
+        ["maxInputLength"]=#("-0x80"),
         ["bytes"]=1,
         ["decode"]=function(readByte)
             local b = readInt(readByte,1)
             if b&0x80>0 then b=b-0x100 end
             return string.format("%d",b)
+        end,
+        ["write"]=function(input)
+            local n = math.min(math.max(tonumber(input),-0x80),0x7F)
+            if n<0 then n=n+0x100 end
+            return writeInt(n,1)
         end
     },
     {
         ["title"]="Unigned 8-bit",
         ["shortTitle"]="uint8",
         ["maxLength"]=#("255"),
+        ["maxInputLength"]=#("0xFF"),
         ["bytes"]=1,
-        ["decode"]=function(readByte) return string.format("%d",readInt(readByte,1)) end
+        ["decode"]=function(readByte) return string.format("%d",readInt(readByte,1)) end,
+        ["write"]=function(input) return writeInt(math.max(math.min(tonumber(input),0xFF),0),1) end
     },
     {
         ["title"]="Signed 16-bit",
         ["shortTitle"]="int16",
         ["maxLength"]=#("-32768"),
+        ["maxInputLength"]=#("-0x8000"),
         ["bytes"]=2,
         ["decode"]=function(readByte)
             local b = readInt(readByte,2)
             if b&0x8000>0 then b=b-0x10000 end
             return string.format("%d",b)
+        end,
+        ["write"]=function(input)
+            local n = math.min(math.max(tonumber(input),-0x8000),0x7FFF)
+            if n<0 then n=n+0x10000 end
+            return writeInt(n,2)
         end
     },
     {
         ["title"]="Unigned 16-bit",
         ["shortTitle"]="uint16",
         ["maxLength"]=#("65535"),
+        ["maxInputLength"]=#("0xFFFF"),
         ["bytes"]=2,
-        ["decode"]=function(readByte) return string.format("%d",readInt(readByte,2)) end
+        ["decode"]=function(readByte) return string.format("%d",readInt(readByte,2)) end,
+        ["write"]=function(input) return writeInt(math.max(math.min(tonumber(input),0xFFFF),0),2) end
     },
     {
         ["title"]="Signed 32-bit",
         ["shortTitle"]="int32",
         ["maxLength"]=#("-2147483648"),
+        ["maxInputLength"]=#("-0x80000000"),
         ["bytes"]=4,
         ["decode"]=function(readByte)
             local b = readInt(readByte,4)
             if b&0x80000000>0 then b=b-0x100000000 end
             return string.format("%d",b)
+        end,
+        ["write"]=function(input)
+            local n = math.min(math.max(tonumber(input),-0x80000000),0x7FFFFFFF)
+            if n<0 then n=n+0x100000000 end
+            return writeInt(n,4)
         end
     },
     {
         ["title"]="Unigned 32-bit",
         ["shortTitle"]="uint32",
-        ["maxLength"]=#("65535"),
+        ["maxLength"]=#("4294967295"),
+        ["maxInputLength"]=#("0xFFFFFFFF"),
         ["bytes"]=4,
-        ["decode"]=function(readByte) return string.format("%d",readInt(readByte,4)) end
+        ["decode"]=function(readByte) return string.format("%d",readInt(readByte,4)) end,
+        ["write"]=function(input) return writeInt(math.max(math.min(tonumber(input),0xFFFFFFFF),0),4) end
     },
     {
         ["title"]="Float 32-bit",
@@ -339,6 +332,51 @@ local decodingTable = {
             local sign = 1
             if bytes[1]&0x80>0 then sign=-1 end
             return largeNum(sign*absv)
+        end,
+        ["write"]=function(input)
+            local num = tonumber(input)
+            if num==0 then return {0,0,0,0} end
+            if num~=num then return {127,255,255,255} end
+            if num==math.huge then return {127,128,0,0} end
+            if num==-math.huge then return {255,128,0,0} end
+
+            local sign = 0
+            if num<0 then sign=1 end
+            num=math.abs(num)
+
+            local exp = 0
+            if num>=1 then
+                while num>=2 do
+                    num = num / 2
+                    exp = exp + 1
+                end
+            else
+                while num < 1 do
+                    num = num * 2
+                    exp = exp - 1
+                end
+            end
+            exp=exp+127
+            -- Handle denormalized numbers (exponent would be < 0)
+            if exp <= 0 then
+                -- Denormalized number
+                num = num * math.pow(2, exp - 1)
+                exp = 0
+            else
+                -- Remove implicit leading 1
+                num = num - 1
+            end
+
+            local mantissa = math.floor(num * 8388608 + 0.5)
+            exp=math.max(0,math.min(255,exp))
+            mantissa=math.max(0,math.min(8388607,mantissa))
+
+            return {
+                (sign<<7)|(exp>>1),
+                ((exp&1)<<7)|(mantissa>>16),
+                (mantissa>>8)&255,
+                mantissa&255
+            }
         end
     },
     {
@@ -346,14 +384,19 @@ local decodingTable = {
         ["shortTitle"]="UTF-8",
         ["maxLength"]=1,
         ["bytes"]=1,
-        ["decode"]=function(readByte) return unicode.char(readUniChar(readByte)) end
+        ["decode"]=function(readByte) return unicode.readChar(readByte) end,
+        ["write"]=function(input) return {string.byte(unicode.sub(input,1,1),1,4)} end
     },
     {
         ["title"]="Unicode code point",
         ["shortTitle"]="Index",
         ["maxLength"]=#("U+10FFFF"),
         ["bytes"]=1,
-        ["decode"]=function(readByte) return "U+"..toHex(readUniChar(readByte),config.design.codePointUppercase,4) end
+        ["decode"]=function(readByte) return "U+"..toHex(unicode.readCodePoint(readByte),config.design.codePointUppercase,4) end,
+        ["write"]=function(input)
+            if input:sub(1,2)=="U+" then input=input:sub(3) end
+            return {string.byte(unicode.char(tonumber(input,16)),1,4)}
+        end
     }
 }
 
@@ -375,6 +418,12 @@ for _,v in ipairs(decodingTable) do
     decodingOutputLength=math.max(decodingOutputLength,v.maxLength)
 end
 
+for _,v in ipairs(decodingTable) do
+    if v.maxInputLength==nil then
+        v.maxInputLength=v.maxLength
+    end
+end
+
 local rbuf = assert(gpu.allocateBuffer(),"No render buffer available.")
 gpu.setActiveBuffer(rbuf)
 gpu.setBackground(config.colors.mainBackground)
@@ -382,10 +431,13 @@ gpu.setForeground(config.colors.mainForeground)
 gpu.fill(1,1,160,50," ")
 
 local function prompt(txt,default)
+    local bg = gpu.getBackground()
     gpu.setActiveBuffer(0)
+    gpu.setBackground(0xFFFFFF)
     termlib.cursorPosX = 1
     termlib.cursorPosY = 1
     local out = read(nil,"\x1b[107m\x1b[30m"..txt,default)
+    gpu.setBackground(bg)
     gpu.setActiveBuffer(rbuf)
     gpu.bitblt(0,1,1,width,1,rbuf,1,1)
     return out
@@ -507,6 +559,23 @@ local function renderDecodingBorder()
     gpu.setForeground(config.colors.mainForeground)
 end
 
+local function getDecodingValue(idx,default)
+    if cursor+decodingTable[idx].bytes>fileLength then return default end
+    local readcur=cursor
+    local function readByte()
+        local out = getByte(readcur)
+        readcur=readcur+1
+        return out
+    end
+    local out
+    local success = pcall(function()
+        out = decodingTable[idx].decode(readByte)
+    end)
+    if not success then return default end
+    if out==nil then return default end
+    return out
+end
+
 local function updateDecodingTable()
     if width<80 then return end
     local readcur
@@ -555,7 +624,7 @@ local endiannessX = 1
 local endiannessY = #decodingTable+3
 
 local inputModeX = 1
-local inputModeY = #decodingTable+4
+local inputModeY = #decodingTable+6
 local inputMode = 0
 
 local function initControlsText()
@@ -617,15 +686,17 @@ local function initControlsText()
         gpu.set(rowByteLength+2,height-3,"^J")
         gpu.setForeground(config.colors.mainForeground) gpu.setBackground(config.colors.mainBackground)
     else
-        gpu.set(width-#("Jump to address")   ,#decodingTable+5,"Jump to address")
-        gpu.set(width-#("Save as")           ,#decodingTable+6,"Save as")
-        gpu.set(width-#("Save")              ,#decodingTable+7,"Save")
-        gpu.set(width-#("Exit")              ,#decodingTable+8,"Exit")
+        gpu.set(width-#("Write value")       ,#decodingTable+4 ,"Write value")
+        gpu.set(width-#("Jump to address")   ,#decodingTable+7 ,"Jump to address")
+        gpu.set(width-#("Save as")           ,#decodingTable+9 ,"Save as")
+        gpu.set(width-#("Save")              ,#decodingTable+10,"Save")
+        gpu.set(width-#("Exit")              ,#decodingTable+11,"Exit")
         gpu.setForeground(config.colors.keyForeground) gpu.setBackground(config.colors.keyBackground)
-        gpu.set(width-#("^J Jump to address"),#decodingTable+5,"^J")
-        gpu.set(width-#("Shift+^S Save as")  ,#decodingTable+6,"Shift+^S")
-        gpu.set(width-#("^S Save")           ,#decodingTable+7,"^S")
-        gpu.set(width-#("^X Exit")           ,#decodingTable+8,"^X")
+        gpu.set(width-#("^W Write value")    ,#decodingTable+4 ,"^W")
+        gpu.set(width-#("^J Jump to address"),#decodingTable+7 ,"^J")
+        gpu.set(width-#("Shift+^S Save as")  ,#decodingTable+9 ,"Shift+^S")
+        gpu.set(width-#("^S Save")           ,#decodingTable+10,"^S")
+        gpu.set(width-#("^X Exit")           ,#decodingTable+11,"^X")
         gpu.setForeground(config.colors.mainForeground) gpu.setBackground(config.colors.mainBackground)
     end
 end
@@ -734,6 +805,96 @@ local function toggleEndianness()
     gpu.bitblt()
 end
 
+local dcur = 1
+local function writeDecodingFormat()
+    if width<80 then return end
+
+    local function renderItem(idx,cur)
+        if cur then
+            gpu.setForeground(config.colors.cursorForeground)
+            gpu.setBackground(config.colors.cursorBackground)
+        else
+            gpu.setForeground(config.colors.decodingTableEntryTitle)
+            gpu.setBackground(config.colors.mainBackground)
+        end
+        local v = decodingTable[idx]
+        gpu.set(width-1-decodingOutputLength-decodingTitleLength,idx+1,string.rep(" ",decodingTitleLength-#v.title)..v.title)
+    end
+
+    gpu.setActiveBuffer(0)
+    gpu.setForeground(config.colors.mainForeground) gpu.setBackground(config.colors.mainBackground)
+    gpu.fill(width-2-decodingOutputLength-decodingTitleLength,#decodingTable+2,2+decodingOutputLength+decodingTitleLength,10," ")
+    gpu.setForeground(config.colors.keyForeground) gpu.setBackground(config.colors.keyBackground)
+    gpu.set(width-10,#decodingTable+3,"←/⌫")
+    gpu.set(width-10,#decodingTable+4,"↑/↓")
+    gpu.set(width-10,#decodingTable+5,"→/⏎")
+    gpu.setForeground(config.colors.mainForeground) gpu.setBackground(config.colors.mainBackground)
+    gpu.set(width-6,#decodingTable+3,"Cancel")
+    gpu.set(width-6,#decodingTable+4,"Choose")
+    gpu.set(width-5,#decodingTable+5,"Enter")
+    gpu.setActiveBuffer(rbuf)
+
+    renderItem(dcur,true)
+    local function bitblt()
+        local x = width-2-decodingOutputLength-decodingTitleLength
+        gpu.bitblt(0,x,1,2+decodingOutputLength+decodingTitleLength,#decodingTable+2,rbuf,x,1)
+    end
+    bitblt()
+
+    while true do
+        local args = {event.pull("key_down",0.5)}
+        if args and args[1] then
+            local key = keyboard.keys[args[4]]
+            if key=="up" then
+                renderItem(dcur,false)
+                dcur=math.max(dcur-1,1)
+                renderItem(dcur,true)
+                bitblt()
+            end
+            if key=="down" then
+                renderItem(dcur,false)
+                dcur=math.min(dcur+1,#decodingTable)
+                renderItem(dcur,true)
+                bitblt()
+            end
+            if key=="left" or key=="back" then
+                renderItem(dcur,false)
+                return gpu.bitblt()
+            end
+            if key=="right" or key=="enter" then break end
+        end
+    end
+    gpu.bitblt(0,1,1,width,height)
+    gpu.setActiveBuffer(0)
+
+    termlib.cursorPosX = width-decodingOutputLength
+    termlib.cursorPosY = 1+dcur
+    local ogv = getDecodingValue(dcur,"")
+    gpu.setForeground(config.colors.cursorForeground)
+    gpu.setBackground(config.colors.cursorBackground)
+    gpu.set(width-decodingOutputLength,1+dcur,ogv..string.rep(" ",decodingOutputLength-unicode.len(ogv)))
+    local input = read(nil,nil,ogv,decodingTable[dcur].maxInputLength)
+    gpu.setActiveBuffer(rbuf)
+    renderItem(dcur,false)
+
+    local out
+    local success = pcall(function()
+        out = decodingTable[dcur].write(input)
+    end)
+    if out==nil then return gpu.bitblt() end
+    if type(out)~="table" then return gpu.bitblt() end
+    if not success then return gpu.bitblt() end
+
+    for i=1,#out do
+        local byteIdx = cursor+i-1
+        setByte(byteIdx,(out[i] or 0)&255)
+        renderByte(byteIdx,true)
+    end
+
+    updateDecodingTable()
+    gpu.bitblt()
+end
+
 while true do
     local args = {event.pull(0.5)}
     if args and args[1] then
@@ -749,6 +910,7 @@ while true do
                 if key=="j" then jump() end
                 if key=="i" then toggleInputMode() end
                 if key=="e" then toggleEndianness() end
+                if key=="w" then writeDecodingFormat() end
             else
                 if key=="left" or code==8 then moveCur(-1)            gpu.bitblt() goto continue end
                 if key=="right"           then moveCur( 1)            gpu.bitblt() goto continue end
