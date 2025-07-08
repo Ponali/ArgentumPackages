@@ -1,4 +1,4 @@
-local name, version = "hextra", "v1.5.0"
+local name, version = "hextra", "v1.6.0"
 
 
 local component,computer,event,fs,json,unicode=import("component"),import("computer"),import("event"),import("filesystem"),import("json"),import("unicode")
@@ -55,6 +55,7 @@ default(config.colors,"decodingTableOutput"     ,0xFFFFFF)
 default(config.colors,"decodingTableEmptyOutput",0x808080)
 default(config.colors,"decodingTableError"      ,0xFF8888)
 default(config.colors,"toggleableEntry"         ,0x60FF60)
+default(config.colors,"fileDescription"         ,0x808080)
 default(config.colors,"version"                 ,0x606060)
 
 
@@ -447,17 +448,46 @@ local function getByte(idx)
     return content[math.floor(idx/chunkLength)+1]:byte(idx%chunkLength+1,idx%chunkLength+1)
 end
 
+local changedBytes = 0
+local changedBytesY = height-3
+if width<115 then
+    changedBytesY = height-1
+else
+    gpu.setForeground(config.colors.fileDescription)
+    local txt = (fpath or "New file").." ("..fileLength.." bytes)"
+    gpu.set(width-unicode.wlen(txt)+1,height-2,txt)
+    gpu.setForeground(config.colors.mainForeground)
+end
+
 local function setByte(idx,val)
     local chunk = math.floor(idx/chunkLength)+1
     local chunkidx = idx%chunkLength+1
     local str = content[chunk]
     content[chunk]=str:sub(1,chunkidx-1)..string.char(val)..str:sub(chunkidx+1)
+    changedBytes=changedBytes+1
+
+    if width<80 then return end
+
+    local txt = changedBytes.." bytes changed"
+    if changedBytes==1 then txt="1 byte changed" end
+    gpu.setForeground(config.colors.fileDescription)
+    gpu.set(width-unicode.wlen(txt)+1,changedBytesY,txt)
+    gpu.setForeground(config.colors.mainForeground)
+end
+
+local function isReadOnly(fpath)
+    local address = fs.absolutePath(fpath)
+    return component.invoke(address,"isReadOnly")
 end
 
 local function save(saveAs)
-    if saveAs or fpath==nil then
-        local npath = prompt("Save location: ",fpath)
-        if npath and npath~="" then fpath=npath end
+    if saveAs or fpath==nil or isReadOnly(fpath) then
+        local npath = nil
+        while npath==nil or isReadOnly(npath) do
+            npath = prompt("Save location: ",fpath)
+            if npath and npath~="" then fpath=npath end
+            if npath==" " then return end
+        end
     end
     if not fpath or fpath=="" then return end
     local file = fs.open(fpath,"wb")
@@ -465,6 +495,12 @@ local function save(saveAs)
         file:write(content[i])
     end
     file:close()
+
+    gpu.setBackground(config.colors.mainBackground)
+    gpu.fill(rowLength+1,changedBytesY,width,1," ")
+    gpu.bitblt()
+
+    changedBytes = 0
 end
 
 local hextype=""
@@ -905,7 +941,12 @@ while true do
             local code = args[3]
             if code==13 then code=10 end
             if keyboard.ctrlDown then
-                if key=="x" then break end
+                if key=="x" then
+                    if changedBytes>0 and unicode.lower(prompt("Would you like to save changes? [Y/n] "))~="n" then
+                        save(false)
+                    end
+                    break
+                end
                 if key=="s" then save(keyboard.shiftDown) end
                 if key=="j" then jump() end
                 if key=="i" then toggleInputMode() end
