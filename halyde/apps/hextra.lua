@@ -1,4 +1,4 @@
-local name, version = "hextra", "v1.6.1"
+local name, version = "hextra", "v1.7.0"
 
 
 local component,computer,event,fs,json,unicode=import("component"),import("computer"),import("event"),import("filesystem"),import("json"),import("unicode")
@@ -770,10 +770,10 @@ local function applyScroll(dist)
 end
 
 local cursorBlink = true
-local function moveCur(dist)
+local function moveTo(to)
     if #hextype>0 then hextype="" end
     cursorBlink=true
-    local curnew = math.max(math.min(cursor+dist,fileLength-1),0)
+    local curnew = math.max(math.min(to,fileLength-1),0)
     if cursor==curnew then
         return renderByte(cursor,true)
     end
@@ -785,6 +785,10 @@ local function moveCur(dist)
     cursor=curnew
     renderByte(cursor,true)
     updateDecodingTable()
+end
+
+local function moveCur(dist)
+    moveTo(cursor+dist)
 end
 
 local function typeHex(key)
@@ -843,65 +847,21 @@ local function toggleEndianness()
 end
 
 local dcur = 1
-local function writeDecodingFormat()
-    if width<80 then return end
 
-    local function renderItem(idx,cur)
-        if cur then
-            gpu.setForeground(config.colors.cursorForeground)
-            gpu.setBackground(config.colors.cursorBackground)
-        else
-            gpu.setForeground(config.colors.decodingTableEntryTitle)
-            gpu.setBackground(config.colors.mainBackground)
-        end
-        local v = decodingTable[idx]
-        gpu.set(width-1-decodingOutputLength-decodingTitleLength,idx+1,string.rep(" ",decodingTitleLength-#v.title)..v.title)
+local function renderDecodingItem(idx,cur)
+    if cur then
+        gpu.setForeground(config.colors.cursorForeground)
+        gpu.setBackground(config.colors.cursorBackground)
+    else
+        gpu.setForeground(config.colors.decodingTableEntryTitle)
+        gpu.setBackground(config.colors.mainBackground)
     end
+    local v = decodingTable[idx]
+    gpu.set(width-1-decodingOutputLength-decodingTitleLength,idx+1,string.rep(" ",decodingTitleLength-#v.title)..v.title)
+end
 
-    gpu.setActiveBuffer(0)
-    gpu.setForeground(config.colors.mainForeground) gpu.setBackground(config.colors.mainBackground)
-    gpu.fill(width-2-decodingOutputLength-decodingTitleLength,#decodingTable+2,2+decodingOutputLength+decodingTitleLength,10," ")
-    gpu.setForeground(config.colors.keyForeground) gpu.setBackground(config.colors.keyBackground)
-    gpu.set(width-10,#decodingTable+3,"←/⌫")
-    gpu.set(width-10,#decodingTable+4,"↑/↓")
-    gpu.set(width-10,#decodingTable+5,"→/⏎")
-    gpu.setForeground(config.colors.mainForeground) gpu.setBackground(config.colors.mainBackground)
-    gpu.set(width-6,#decodingTable+3,"Cancel")
-    gpu.set(width-6,#decodingTable+4,"Choose")
-    gpu.set(width-5,#decodingTable+5,"Enter")
-    gpu.setActiveBuffer(rbuf)
-
-    renderItem(dcur,true)
-    local function bitblt()
-        local x = width-2-decodingOutputLength-decodingTitleLength
-        gpu.bitblt(0,x,1,2+decodingOutputLength+decodingTitleLength,#decodingTable+2,rbuf,x,1)
-    end
-    bitblt()
-
-    while true do
-        local args = {event.pull("key_down",0.5)}
-        if args and args[1] then
-            local key = keyboard.keys[args[4]]
-            if key=="up" then
-                renderItem(dcur,false)
-                dcur=math.max(dcur-1,1)
-                renderItem(dcur,true)
-                bitblt()
-            end
-            if key=="down" then
-                renderItem(dcur,false)
-                dcur=math.min(dcur+1,#decodingTable)
-                renderItem(dcur,true)
-                bitblt()
-            end
-            if key=="left" or key=="back" then
-                renderItem(dcur,false)
-                return gpu.bitblt()
-            end
-            if key=="right" or key=="enter" then break end
-        end
-    end
-    gpu.bitblt(0,1,1,width,height)
+local function writePrompt()
+    gpu.bitblt()
     gpu.setActiveBuffer(0)
 
     termlib.cursorPosX = width-decodingOutputLength
@@ -912,7 +872,9 @@ local function writeDecodingFormat()
     gpu.set(width-decodingOutputLength,1+dcur,ogv..string.rep(" ",decodingOutputLength-unicode.len(ogv)))
     local input = read(nil,nil,ogv,decodingTable[dcur].maxInputLength)
     gpu.setActiveBuffer(rbuf)
-    renderItem(dcur,false)
+    renderDecodingItem(dcur,false)
+
+    if input==ogv then return gpu.bitblt() end
 
     local out
     local success = pcall(function()
@@ -929,6 +891,85 @@ local function writeDecodingFormat()
     end
 
     updateDecodingTable()
+    gpu.bitblt()
+end
+
+local function writeDecodingFormat()
+    if width<80 then return end
+
+    gpu.setActiveBuffer(0)
+    gpu.setForeground(config.colors.mainForeground) gpu.setBackground(config.colors.mainBackground)
+    gpu.fill(width-2-decodingOutputLength-decodingTitleLength,#decodingTable+2,2+decodingOutputLength+decodingTitleLength,10," ")
+    gpu.setForeground(config.colors.keyForeground) gpu.setBackground(config.colors.keyBackground)
+    gpu.set(width-10,#decodingTable+3,"←/⌫")
+    gpu.set(width-10,#decodingTable+4,"↑/↓")
+    gpu.set(width-10,#decodingTable+5,"→/⏎")
+    gpu.setForeground(config.colors.mainForeground) gpu.setBackground(config.colors.mainBackground)
+    gpu.set(width-6,#decodingTable+3,"Cancel")
+    gpu.set(width-6,#decodingTable+4,"Choose")
+    gpu.set(width-5,#decodingTable+5,"Enter")
+    gpu.setActiveBuffer(rbuf)
+
+    renderDecodingItem(dcur,true)
+    local function bitblt()
+        local x = width-2-decodingOutputLength-decodingTitleLength
+        gpu.bitblt(0,x,1,2+decodingOutputLength+decodingTitleLength,#decodingTable+2,rbuf,x,1)
+    end
+    bitblt()
+
+    while true do
+        local args = {event.pull("key_down",0.5)}
+        if args and args[1] then
+            local key = keyboard.keys[args[4]]
+            if key=="up" then
+                renderDecodingItem(dcur,false)
+                dcur=math.max(dcur-1,1)
+                renderDecodingItem(dcur,true)
+                bitblt()
+            end
+            if key=="down" then
+                renderDecodingItem(dcur,false)
+                dcur=math.min(dcur+1,#decodingTable)
+                renderDecodingItem(dcur,true)
+                bitblt()
+            end
+            if key=="left" or key=="back" then
+                renderDecodingItem(dcur,false)
+                return gpu.bitblt()
+            end
+            if key=="right" or key=="enter" then break end
+        end
+    end
+    writePrompt()
+end
+
+local function cursorTouch(x,y)
+    if x>rowIdxLength+1 and x<=rowLength then
+        local curX
+        if x<=rowByteLength then
+            curX = (x-rowIdxLength-2)//(2+bytePadding)
+        elseif x>rowByteLength+1 and width>=80 then
+            curX = x-rowByteLength-2
+        else
+            return
+        end
+        local curByte = curX+(y-1+scroll)*bytesPerRow
+        moveTo(curByte)
+        gpu.bitblt()
+    end
+    if width>=80 and x>width-2-decodingOutputLength-decodingTitleLength and x<width and y>1 and y<=#decodingTable+1 then
+        dcur = y-1
+        renderDecodingItem(dcur,true)
+        writePrompt()
+    end
+end
+
+local function scrollEvent(x,y,dir)
+    dir=-dir
+    if scroll+dir<0 or scroll+dir>=fileLength//bytesPerRow-height+1 then return end
+    applyScroll(dir)
+    if cursor+(dir-scroll)*bytesPerRow<bytesPerRow then moveCur(bytesPerRow) end
+    if cursor+(dir-scroll)*bytesPerRow>=(height-1)*bytesPerRow then moveCur(-bytesPerRow) end
     gpu.bitblt()
 end
 
@@ -966,6 +1007,8 @@ while true do
                 end
             end
         end
+        if args[1]=="touch" or args[1]=="drag" then cursorTouch(args[3],args[4]) end
+        if args[1]=="scroll" then scrollEvent(args[3],args[4],args[5]) end
     else
         cursorBlink = not cursorBlink
         renderByte(cursor,cursorBlink)
