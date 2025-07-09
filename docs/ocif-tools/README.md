@@ -18,5 +18,4 @@ Images in MineOS are mostly transparent, like this one shown here for example. I
 ## Convert to ANSI
 To convert any picture into ANSI art, run `ocif to-ansi [file].pic [output]`. Replace "[file]" with the filename of the picture, and "[output]" with the filename of the output file.
 
-### Problems with ANSI Compatibility
-As of writing this, Halyde only supports ANSI with [4-bit color](https://cerulean-blue.gitbook.io/halyde-docs/libraries-and-apis/ansi-compatibility#colors). 24-bit are not yet supported, which are returned by libocif. The best way to view the ANSI content right now is to copy the output file into a Linux computer and view it on a terminal using `cat`.
+For more information on the ANSI output, check the [libocif compatibility](../libocif/README.md#compatibility).

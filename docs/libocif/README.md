@@ -13,7 +13,8 @@ Currently Supported codecs:
 - [x] 7 (complex)
 - [x] 8 (complex)
 
-ANSI output uses 24-bit color, which as of right now, [isn't supported by Halyde](../ocif-tools/README.md#problems-with-ansi-compatibility).
+ANSI output currently uses 24-bit color, which needs to be supported by the terminal that prints the output.
+For maximum compatibility, run the file through `cat` in Halyde v2.2.0+.
 
 ## Usage
 Importing: `local ocif = import("ocif")`
@@ -73,4 +74,4 @@ Shows the image onto the screen.
 
 `image:toansi(): string`
 
-Converts the image into an ANSI string. [May not be rendered properly inside Halyde.](../ocif-tools/README.md#problems-with-ansi-compatibility)
+Converts the image into an ANSI string.
