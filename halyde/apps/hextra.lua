@@ -1,4 +1,4 @@
-local name, version = "hextra", "v1.6.0"
+local name, version = "hextra", "v1.6.1"
 
 
 local component,computer,event,fs,json,unicode=import("component"),import("computer"),import("event"),import("filesystem"),import("json"),import("unicode")
@@ -69,6 +69,7 @@ if width<115 then bytePadding=0 end
 -- local rowLength = rowIdxLength+1+bytesPerRow*(2+bytePadding)-bytePadding+1+bytesPerRow
 local rowLength = rowIdxLength+2+bytesPerRow*(3+bytePadding)-bytePadding
 local rowByteLength = rowIdxLength+1+bytesPerRow*(2+bytePadding)-bytePadding
+if width<80 then rowLength = rowByteLength end
 
 local cursor = 0
 local scroll = 0
