@@ -1,4 +1,4 @@
-local name, version = "hextra", "v1.7.0"
+local name, version = "hextra", "v1.7.1"
 
 
 local component,computer,event,fs,json,unicode=import("component"),import("computer"),import("event"),import("filesystem"),import("json"),import("unicode")
@@ -90,7 +90,7 @@ if table.find(cmdargs,"-l") then
     local idx = table.find(cmdargs,"-l")
     table.remove(cmdargs,idx)
     local arg = table.remove(cmdargs,idx)
-    if not limit then return invalidArgSyntax("Argument -l must have a value.") end
+    if not arg then return invalidArgSyntax("Argument -l must have a value.") end
     limit = tonumber(arg)
     if not limit then return invalidArgSyntax("Cannot convert value of argument -l to number") end
 end
