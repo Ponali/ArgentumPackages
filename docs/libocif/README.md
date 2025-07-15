@@ -72,6 +72,8 @@ Shows the image onto the screen.
 
 ---
 
-`image:toansi(): string`
+`image:toansi([defaultBG: number]): string`
 
 Converts the image into an ANSI string.
+
+`defaultBG`: The default background to put on the output file.

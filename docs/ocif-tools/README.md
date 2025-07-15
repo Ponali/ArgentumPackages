@@ -18,4 +18,6 @@ Images in MineOS are mostly transparent, like this one shown here for example. I
 ## Convert to ANSI
 To convert any picture into ANSI art, run `ocif to-ansi [file].pic [output]`. Replace "[file]" with the filename of the picture, and "[output]" with the filename of the output file.
 
+A default background can be encoded into the output file with the `-b` flag, just like with the `show` command.
+
 For more information on the ANSI output, check the [libocif compatibility](../libocif/README.md#compatibility).

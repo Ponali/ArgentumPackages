@@ -86,15 +86,24 @@ function ocif.new(width,height)
                 end
             end
         end,
-        ["toansi"]=function(self)
+        ["toansi"]=function(self,defaultBG)
             checkArg(1,self,"table")
             local function encodeColor(id,c)
                 return "\x1b["..id..";2;"..((c>>16)&255)..";"..((c>>8)&255)..";"..(c&255).."m"
+            end
+            local function transparentBG(newline)
+                if type(defaultBG)=="number" then
+                    return encodeColor(48,defaultBG)
+                elseif not newline then
+                    return "\x1b[49m"
+                end
+                return ""
             end
             out=""
             for j=1,self.height do
                 local fg = nil
                 local bg = nil
+                out=out..transparentBG(true)
                 for i=1,self.width do
                     local idx = i+(j-1)*self.width
                     if self.data[2][idx]~=fg then
@@ -104,7 +113,7 @@ function ocif.new(width,height)
                     if self.data[4][idx]==1 then
                         if bg~=nil then
                             bg=nil
-                            out=out.."\x1b[49m"
+                            out=out..transparentBG(false)
                         end
                     else
                         if self.data[3][idx]~=bg then

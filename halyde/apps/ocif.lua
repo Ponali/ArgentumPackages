@@ -11,17 +11,18 @@ end
 
 local cmd = table.remove(args,1)
 
+local bg = nil
+if table.find(args,"-b") then
+    local idx = table.find(args,"-b")
+    table.remove(args,idx)
+    bg = tonumber(table.remove(args,idx),16)
+end
+
 if cmd=="show" then
     if #args<1 then
         return shell.run("help ocif")
     end
 
-    local bg = nil
-    if table.find(args,"-b") then
-        local idx = table.find(args,"-b")
-        table.remove(args,idx)
-        bg = tonumber(table.remove(args,idx),16)
-    end
     local file = fs.concat(shell.workingDirectory, args[1])
 
     local success, result = ocif.load(file)
@@ -45,7 +46,7 @@ elseif cmd=="to-ansi" then
     local success, result = ocif.load(file)
     assert(success,result)
 
-    local ansi = result:toansi()
+    local ansi = result:toansi(bg)
     local out = fs.open(outfile,"w")
     out:write(ansi)
     out:close()
