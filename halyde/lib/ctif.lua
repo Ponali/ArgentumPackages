@@ -64,7 +64,7 @@ end
 
 local function getPalette(image,i)
   if i<16 then
-    local col = image.data.palette[i]
+    local col = image.data.palette[i+1]
     if col~=nil then return col end
     if image.ctif.platformId==2 then
       return ccDefaultPalette[i+1]
@@ -108,17 +108,62 @@ local function fromPalette(image,color)
   return val
 end
 
-function ctif.new(width,height,bitDepth,charWidth,charHeight,platformId)
+local function exportImage(image)
+  local content = ""
+  local function write(str)
+    content=content..str
+  end
+  local function writeNumber(num,n)
+    for i=1,n or 1 do
+      content=content..string.char(num&0xFF)
+      num=num>>8
+    end
+  end
+
+  write(signature)
+
+  writeNumber(1)
+  writeNumber(0)
+  writeNumber(image.ctif.platformId,2)
+
+  writeNumber(image.width,2)
+  writeNumber(image.height,2)
+  writeNumber(image.ctif.charWidth)
+  writeNumber(image.ctif.charHeight)
+  writeNumber(image.bitDepth)
+
+  writeNumber(3)
+  writeNumber(#image.data.palette,2)
+  for i=1,#image.data.palette do
+    writeNumber(image.data.palette[i],3)
+  end
+
+  for i=1,#image.data.chars do
+    if image.bitDepth > 4 then
+      writeNumber(image.data.chars[i][3])
+      writeNumber(image.data.chars[i][2])
+    else
+      writeNumber((image.data.chars[i][3]<<4)|image.data.chars[i][2])
+    end
+    writeNumber(image.data.chars[i][1]-1)
+  end
+
+  return content
+end
+
+function ctif.new(width,height,bitDepth,charWidth,charHeight,platformId,palette)
   checkArg(1,width,"number")
   checkArg(2,height,"number")
   checkArg(3,bitDepth,"nil","number")
   checkArg(4,charWidth,"nil","number")
   checkArg(5,charHeight,"nil","number")
   checkArg(6,platformId,"nil","number")
+  checkArg(7,palette,"nil","table")
   bitDepth = bitDepth or gpu.getDepth()
   charWidth = charWidth or 2
   charHeight = charHeight or 4
   platformId = platformId or 1
+  palette = palette or {}
 
   local image = {
     ["width"]=width,
@@ -130,13 +175,13 @@ function ctif.new(width,height,bitDepth,charWidth,charHeight,platformId)
       ["charHeight"]=charHeight
     },
     ["data"]={
-      ["palette"]={},
+      ["palette"]=palette,
       ["chars"]={}
     },
     ["setPalette"]=function(self)
       checkArg(1,self,"table")
       for i,v in ipairs(self.data.palette) do
-        gpu.setPaletteColor(i,v)
+        gpu.setPaletteColor(i-1,v)
       end
     end,
     ["show"]=function(self,x,y,width,height,keepPalette,dx,dy)
@@ -232,6 +277,17 @@ function ctif.new(width,height,bitDepth,charWidth,charHeight,platformId)
       return unicode.sub(getChar(self,self.data.chars[idx][1]),sy,sy),
              getPalette(self,self.data.chars[idx][2]),
              getPalette(self,self.data.chars[idx][3])
+    end,
+    ["save"]=function(self,file)
+      checkArg(1,self,"table")
+      checkArg(2,file,"nil","string")
+      local content = exportImage(self)
+      if file then
+        local handle = filesystem.open(file,"wb")
+        handle:write(content)
+        handle:close()
+      end
+      return content
     end
   }
 
@@ -260,8 +316,8 @@ local function getMetadata(file)
     error("unknown header version (expected 1, got "..headerVersion..")")
   end
 
-  local platformVariant = file:readBytes(1) -- 0
-  local platformId = file:readBytes(2) -- 1
+  local platformVariant = file:readBytes(1)
+  local platformId = file:readBytes(2)
   if (platformId ~= 1 and platformId ~= 2) or platformVariant ~= 0 then
     error("unsupported platform ID: " .. platformId .. ":" .. platformVariant)
   end
@@ -278,8 +334,6 @@ local function getMetadata(file)
 end
 
 local function getData(file,width,height,bitDepth,platformId,charWidth,charHeight)
-  local image = ctif.new(width,height,bitDepth,charWidth,charHeight,platformId)
-
   local ccEntrySize = file:readBytes(1)
   local customColors = file:readBytes(2)
   if customColors > 0 and ccEntrySize ~= 3 then
@@ -290,16 +344,16 @@ local function getData(file,width,height,bitDepth,platformId,charWidth,charHeigh
   end
 
   local palette = {}
-  for p=0,customColors-1 do
+  for p=1,customColors do
     palette[p] = file:readBytes(3)
   end
-  image.data.palette = palette
 
-  for y=0,height-1 do
-    for x=0,width-1 do
-      local j = (y*width)+x+1
+  local image = ctif.new(width,height,bitDepth,charWidth,charHeight,platformId,palette)
+
+  for y=1,height do
+    for x=1,width do
+      local j = (y-1)*width+x
       local cw,fg,bg
-      -- if platformId==2 then cw = file:readBytes(1) + 1 end
       if bitDepth > 4 then
         bg = file:readBytes(1)
         fg = file:readBytes(1)
@@ -308,7 +362,6 @@ local function getData(file,width,height,bitDepth,platformId,charWidth,charHeigh
         bg = (color >> 4) & 0x0F
         fg = color & 0x0F
       end
-      -- if platformId==1 then cw = file:readBytes(1) + 1 end
       cw = file:readBytes(1) + 1
       -- These colors are palette indexes, not actual colors
       image.data.chars[j] = {cw,fg,bg}
