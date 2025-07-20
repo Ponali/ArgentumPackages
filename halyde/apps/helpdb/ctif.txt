@@ -1,0 +1,12 @@
+Usage: ctif [IMAGE] [FLAGS]
+Image viewer for images in the CTIF format.
+
+  IMAGE                   The image to open and view.
+  FLAGS                   Specifies extra options when executing the command.
+    -f, --fullscreen      Changes the resolutions to the image size, and hides the header.
+                          Behaves like ctifview (by ChenThread).
+    -o, --oc-char-ratio   Keeps the native character ratio when displaying ComputerCraft images.
+
+Examples:
+  ctif picture.ctif         Opens the "picture.ctif" image.
+  ctif picture-cc.ctif -o   Opens the "picture-cc.ctif", in the native character ratio.
