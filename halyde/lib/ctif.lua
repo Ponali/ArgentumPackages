@@ -96,12 +96,12 @@ local function colorDiff(c1,c2)
 end
 
 local function fromPalette(image,color)
-  local diff,idx = math.inf,nil
+  local diff,idx = math.huge,nil
   for i=0,255 do
     local palc = getPalette(image,i)
     local ndif = colorDiff(color,palc)
     if ndif<diff then
-      diff = ndir
+      diff = ndif
       val = i
     end
   end
@@ -244,11 +244,12 @@ function ctif.new(width,height,bitDepth,charWidth,charHeight,platformId,palette)
     end,
     ["setChar"]=function(self,x,y,chr,fg,bg,isPaletteIndex)
       checkArg(1,self,"table")
-      checkArg(2,width,"number")
-      checkArg(3,height,"number")
+      checkArg(2,x,"number")
+      checkArg(3,y,"number")
       checkArg(4,chr,"string")
       checkArg(5,fg,"number")
       checkArg(6,bg,"number")
+      checkArg(7,isPaletteIndex,"nil","boolean")
 
       if x<1 or x>width or y<1 or y>height then return false end
 
@@ -256,8 +257,8 @@ function ctif.new(width,height,bitDepth,charWidth,charHeight,platformId,palette)
       if self.data.chars[idx]==nil then return false end
 
       self.data.chars[idx][1] = getCharNum(chr)
-      self.data.chars[idx][2] = isPaletteIndex and fg or fromPalette(image,fg)
-      self.data.chars[idx][3] = isPaletteIndex and bg or fromPalette(image,bg)
+      self.data.chars[idx][2] = isPaletteIndex and bg or fromPalette(self,bg)
+      self.data.chars[idx][3] = isPaletteIndex and fg or fromPalette(self,fg)
 
       return true
     end,
