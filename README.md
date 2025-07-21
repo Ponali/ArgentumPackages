@@ -3,8 +3,8 @@ This repository contains all Argentum packages that are made by Ponali, that are
 ---
 
 Apps:
-[Donut](docs/donut/README.md) - [OCIF Tools](docs/ocif-tools/README.md) - [Hextra](docs/hextra/README.md)
+[Donut](docs/donut/README.md) - [OCIF Tools](docs/ocif-tools/README.md) - [Hextra](docs/hextra/README.md) - [CTIF Viewer](docs/ctif-viewer/README.md)
 
-Libraries: [libocif](docs/libocif/README.md)
+Libraries: [libocif](docs/libocif/README.md) - [libctif](docs/libctif/README.md)
 
 Drivers: [utape](docs/utape/README.md)
