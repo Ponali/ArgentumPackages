@@ -26,7 +26,7 @@ Importing: `local ctif = import("ctif")`
 
 `ctif.new(width: number, height: number, [bitDepth: number, charWidth: number, charHeight: number, platformId: number, palette: table])`
 
-&nbsp;&nbsp;`bitDepth`: Number of bits to store a color. 4 bits will only let you use your own color palette. 8 bits will be the same, but with 240 extra colors from this algorithm: ``. Defaults to your GPU's current color depth.
+&nbsp;&nbsp;`bitDepth`: Number of bits to store a color. Defaults to your GPU's current color depth. See [Color and Bit Depth](#color-and-bit-depth).
 
 &nbsp;&nbsp;`charWidth`, `charHeight`: The resolution of a character. Only 2x3 and 2x4 are supported. Defaults to 2x4.
 
@@ -41,7 +41,9 @@ Returns an empty [Image table](#image-table).
 
 Returns an [Image table](#image-table), with the contents of the image from the file path.
 
-`ctif.CCWide`
+`ctif.CCWide: boolean`
+
+Boolean value that can be changed to indicate whether to render ComputerCraft images with double the width or not (see [Internal and rendered positions](#internal-and-rendered-positions)). Defaults to `true`.
 
 ### Image table
 
@@ -51,13 +53,13 @@ Returns an [Image table](#image-table), with the contents of the image from the 
 
 &nbsp;&nbsp;`image.ctif.charWidth`, `charHeight`: the resolution of a character in the image.
 
-&nbsp;&nbsp;`image.ctif.renderCharWidth`, `image.ctif.renderCharHeight`: The resolution, in characters, to render an internal character from the image. (see [Internal and renered positions](#internal-and-rendered-positions))
+&nbsp;&nbsp;`image.ctif.renderCharWidth`, `image.ctif.renderCharHeight`: The resolution, in characters, to render an internal character from the image. (see [Internal and rendered positions](#internal-and-rendered-positions))
 
 &nbsp;&nbsp;`image.renderWidth`, `image.renderHeight`: The resolution of the image, when rendered to the screen.
 
 `width`, `height`: The resolution of the image internally.
 
-`bitDepth`: The bit depth of every color in the image.
+`bitDepth`: The bit depth of every color in the image. See [Color and Bit Depth](#color-and-bit-depth).
 
 ---
 
@@ -121,3 +123,11 @@ If you are only working with images meant for OpenComputers, you should not worr
 When rendering images for ComputerCraft, the image will render with 2x the width, so that it looks more correct. The `width` and `height` values in the image table does not account for this, but `renderWidth` and `renderHeight` does.
 
 If you would like to stop stretching the width of the image, set `ctif.CCWide` to `false`.
+
+### Color and Bit Depth
+
+When making an image using this library, the bit depth can decide how much colors your image will have. The CTIF supports bit depths of 4bpp or 8bpp.
+
+The first 16 colors can be a custom palette that you specify. If no palette is specified, or your palette has less than 16 colors, then the remaining colors will be used by a default palette when rendered. For an OpenComputers image, it will use this algorithm: `(i*15)<<16 | (i*15)<<8 | (i*15)`. For a ComputerCraft image, it will use [this palette](https://wiki.computercraft.cc/Colours_API).
+
+If the bit depth is set to 8bpp, then 240 extra colors will be available. These colors are made using this algorithm: `floor((j%5)*255/4)<<16 | floor((floor(j/5)%8)*255/7)<<8 | floor((floor(j/40)%6)*255/5)`, where `j` is the color index minus 16.
