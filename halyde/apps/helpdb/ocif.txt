@@ -1,15 +1,17 @@
 Usage: ocif [COMMAND] [IMAGE] [FLAGS] [OUTPUT]
 Apply operations to image files that are in the OCIF (MineOS) file format.
 
-  COMMAND     Specifies the operation for OCIF to do.
-    show      Shows the image on the screen.
-    to-ansi   Converts the image into ANSI. (24-bit color*)
-  IMAGE       Image to apply operations to.
-  FLAGS       Specifies extra options when executing the command.
-    -b        Specifies the background color (in hex) for transparent images.
-  OUTPUT*     Output file for the 'to-ansi' command.
+  COMMAND              Specifies the operation for OCIF to do.
+    show               Shows the image on the screen.
+    to-ansi            Converts the image into ANSI art.
+  IMAGE                Image to apply operations to.
+  FLAGS                Specifies extra options when executing the command.
+    -b, --background   Specifies the background color (in hex) for transparent images.
+    -f, --fullscreen   Shows the image in fullscreen, changing the resolution if necessary.
+  OUTPUT*              Output file for the 'to-ansi' command.
 
 Examples:
   ocif show Icon.pic               Shows the "Icon.pic" image.
   ocif show Icon.pic -b FFFFFF     Shows the "Icon.pic" image with a white background.
+  ocif show Screenshot.pic -f      Shows a screenshot in fullscreen.
   ocif to-ansi Icon.pic Icon.ans   Converts the "Icon.pic" image into ANSI art, and saves it as "Icon.ans"
