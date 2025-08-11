@@ -1,4 +1,4 @@
-local name, version = "hextra", "v1.7.1"
+local name, version = "hextra", "v1.7.2"
 
 
 local component,computer,event,fs,json,unicode=import("component"),import("computer"),import("event"),import("filesystem"),import("json"),import("unicode")
@@ -461,10 +461,11 @@ else
 end
 
 local function setByte(idx,val)
+    val = val or 0 -- in case some shit happened
     local chunk = math.floor(idx/chunkLength)+1
     local chunkidx = idx%chunkLength+1
     local str = content[chunk]
-    content[chunk]=str:sub(1,chunkidx-1)..string.char(val)..str:sub(chunkidx+1)
+    content[chunk]=str:sub(1,chunkidx-1)..string.char(val&255)..str:sub(chunkidx+1)
     changedBytes=changedBytes+1
 
     if width<80 then return end
@@ -804,9 +805,11 @@ local function typeHex(key)
 end
 
 local function typeByte(byte)
+    if not byte or byte==0 or byte~=byte&255 then return end
     cursorBlink=true
     setByte(cursor,byte)
     moveCur(1)
+    gpu.bitblt()
 end
 
 local function jump()
@@ -979,12 +982,16 @@ while true do
         if args[1]=="key_down" then
             cursorBlink = true
             local key = keyboard.keys[args[4]]
-            if key==nil then goto continue end
             local code = args[3]
+            if key==nil then
+                if code and code~=0 then typeByte(code) end
+                goto continue
+            end
             if code==13 then code=10 end
             if keyboard.ctrlDown then
                 if key=="x" then
-                    if changedBytes>0 and unicode.lower(prompt("Would you like to save changes? [Y/n] "))~="n" then
+                    local input = unicode.lower(prompt("Would you like to save changes? [Y/n] "))
+                    if changedBytes>0 and input~="n" and input~="н" then
                         save(false)
                     end
                     break
@@ -1003,7 +1010,7 @@ while true do
                     if #key==1 and string.find("0123456789abcdef",key) then typeHex(key) gpu.bitblt() end
                     if #key==7 and key:sub(1,6)=="numpad" and string.find("0123456789",key:sub(7)) then typeHex(key:sub(7)) gpu.bitblt() end
                 elseif inputMode==1 then
-                    if code and code~=0 then typeByte(code) gpu.bitblt() end
+                    if code and code~=0 then typeByte(code) end
                 end
             end
         end
